@@ -1,4 +1,1 @@
-# data/.htaccess
-# Intent: Prevent direct web access to runtime files (SQLite DB, locks, etc.).
-# The application should access these files only via filesystem paths on the server.
 Require all denied

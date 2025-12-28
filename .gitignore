@@ -15,6 +15,7 @@ config.php
 # Runtime data (server-only)
 data/*
 !data/.gitkeep
+!data/.htaccess
 
 # Logs
 *.log
