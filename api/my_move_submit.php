@@ -78,14 +78,14 @@ try {
     }
 
     // Flip turn to visitors after saving the host move.
-    $nextTurn = $game['visitor_color'];
+    $nextTurn = $game['host_color'] === 'white' ? 'black' : 'white';
 
     $update = $db->prepare("
         UPDATE games
         SET fen = :fen,
             pgn = :pgn,
             last_move_san = :move,
-            turn_color = :turn_color,
+            turn_color = CASE host_color WHEN 'white' THEN 'black' ELSE 'white' END,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :id
     ");
@@ -94,7 +94,6 @@ try {
         ':fen' => $fen,
         ':pgn' => $pgn,
         ':move' => $move,
-        ':turn_color' => $nextTurn,
         ':id' => $game['id'],
     ]);
 
