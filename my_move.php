@@ -54,7 +54,7 @@
     <h1>Host Move</h1>
     <p class="muted">
       You play <strong id="hostColorLabel">white</strong>. Visitors play <strong id="visitorColorLabel">black</strong>.
-      Turn: <strong id="turnLabel">…</strong>.
+      Turn: <strong id="turnLabel">...</strong>.
     </p>
 
     <div class="row">
