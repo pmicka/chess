@@ -263,10 +263,15 @@
       btnSubmit.disabled = true;
     }
 
-    btnRefresh.addEventListener('click', () => fetchState().catch(err => {
-      statusMsg.textContent = err.message;
+    function handleStateError(err) {
+      statusMsg.textContent = err.message || 'Failed to load state';
       statusMsg.className = 'error';
-    }));
+    }
+
+    // Load state on first render so visitors see the board immediately.
+    fetchState().catch(handleStateError);
+
+    btnRefresh.addEventListener('click', () => fetchState().catch(handleStateError));
 
 btnSubmit.addEventListener('click', async () => {
   if (!pendingMove || !state) return;
@@ -309,4 +314,3 @@ btnSubmit.addEventListener('click', async () => {
   </script>
 </body>
 </html>
-
