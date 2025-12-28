@@ -111,6 +111,7 @@ require_once __DIR__ . '/config.php';
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
+    const turnstileWidget = document.querySelector('.cf-turnstile');
 
     window.turnstileToken = null;
     const game = new Chess();
@@ -251,28 +252,23 @@ require_once __DIR__ . '/config.php';
       return false;
     }
 
-    function clearTurnstileToken(message) {
-      window.turnstileToken = null;
-      if (message) {
-        statusMsg.textContent = message;
-        statusMsg.className = 'error';
-      }
-      btnSubmit.disabled = true;
-    }
-
     function onTurnstileSuccess(token) {
       window.turnstileToken = token;
-      if (pendingMove && isVisitorsTurn()) {
-        btnSubmit.disabled = false;
-      }
     }
 
     function onTurnstileExpired() {
-      clearTurnstileToken('CAPTCHA expired. Please try again.');
+      window.turnstileToken = null;
     }
 
     function onTurnstileError() {
-      clearTurnstileToken('CAPTCHA error. Please retry.');
+      window.turnstileToken = null;
+    }
+
+    function resetTurnstile() {
+      if (window.turnstile && turnstileWidget) {
+        window.turnstile.reset(turnstileWidget);
+      }
+      window.turnstileToken = null;
     }
 
     async function fetchState() {
@@ -334,10 +330,10 @@ btnSubmit.addEventListener('click', async () => {
       body: JSON.stringify({
         fen: game.fen(),
         pgn: game.pgn(),
-        last_move_san: pendingMove.san,
-        turnstile_token: window.turnstileToken
-      })
-    });
+      last_move_san: pendingMove.san,
+      turnstile_token: window.turnstileToken
+    })
+  });
 
     const json = await res.json();
 
@@ -347,7 +343,7 @@ btnSubmit.addEventListener('click', async () => {
 
     statusMsg.textContent = 'Move accepted. Waiting on host.';
     pendingMove = null;
-    window.turnstileToken = null;
+    resetTurnstile();
 
     // Refresh canonical state from server
     await fetchState();
@@ -355,7 +351,7 @@ btnSubmit.addEventListener('click', async () => {
   } catch (err) {
     statusMsg.textContent = err.message;
     statusMsg.className = 'error';
-    window.turnstileToken = null;
+    resetTurnstile();
     btnSubmit.disabled = false;
   }
 });
