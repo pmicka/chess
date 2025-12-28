@@ -23,6 +23,8 @@
  */
 require_once __DIR__ . '/db.php';
 
+log_db_path_info('my_move.php');
+
 $tokenValue = isset($_GET['token']) ? trim($_GET['token']) : '';
 $db = get_db();
 $tokenRow = fetch_valid_host_token($db, $tokenValue);
@@ -531,7 +533,19 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
         const message = err && err.message ? err.message : 'Failed to load state';
         setStatus(message, 'error');
         updateLastUpdated('Failed to load state', 'error');
-        showErrorBanner(`Failed to load state: ${message}`);
+        showErrorBanner(`Failed to load game state: ${message}`);
+        // Do not fall back to the starting position on error.
+        try {
+          if (typeof game.clear === 'function') {
+            game.clear();
+          }
+        } catch (e) {
+          // noop
+        }
+        renderBoard();
+        fenBox.value = '';
+        pgnBox.value = '';
+        movePreview.textContent = 'none';
         throw err;
       } finally {
         btnRefresh.disabled = false;

@@ -24,6 +24,8 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../db.php';
 
+log_db_path_info('state.php');
+
 function respond(int $statusCode, array $payload): void
 {
     http_response_code($statusCode);
@@ -32,7 +34,6 @@ function respond(int $statusCode, array $payload): void
 }
 
 try {
-    error_log('state.php db_path=' . DB_PATH);
     $db = get_db();
     error_log('state.php db_open=ok');
 } catch (Throwable $e) {
@@ -78,7 +79,11 @@ if (!$game) {
 }
 
 $fen = isset($game['fen']) ? trim((string)$game['fen']) : '';
-error_log('state.php game_found=1 fen_length=' . strlen($fen));
+error_log(sprintf(
+    'state.php game_found=1 game_id=%d fen_length=%d',
+    (int)$game['id'],
+    strlen($fen)
+));
 
 if ($fen === '') {
     respond(500, ['ok' => false, 'message' => 'FEN unavailable.', 'code' => 'fen_missing']);

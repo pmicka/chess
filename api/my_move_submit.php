@@ -28,6 +28,7 @@
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../db.php';
+log_db_path_info('my_move_submit');
 
 // MVP: no token required. We only accept POST requests with JSON (or form) payload.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -150,6 +151,7 @@ try {
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$game) {
+        error_log('my_move_submit game_found=0');
         $db->rollBack();
         http_response_code(400);
         echo json_encode(['error' => 'No active game found.']);
@@ -169,6 +171,12 @@ try {
         echo json_encode(['error' => 'It is not the host turn.']);
         exit;
     }
+
+    error_log(sprintf(
+        'my_move_submit game_found=1 game_id=%d fen_length=%d',
+        (int)$game['id'],
+        isset($game['fen']) ? strlen((string)$game['fen']) : 0
+    ));
 
     if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
         $db->rollBack();
