@@ -25,3 +25,86 @@
  * - Token should be marked used immediately on success.
  */
 
+header('Content-Type: application/json');
+
+require_once __DIR__ . '/../db.php';
+
+// MVP: no token required. We only accept POST requests with JSON (or form) payload.
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'POST required']);
+    exit;
+}
+
+$input = file_get_contents('php://input');
+$data = json_decode($input, true);
+if (!is_array($data)) {
+    $data = $_POST; // fallback for form-encoded requests
+}
+
+$fen = trim($data['fen'] ?? '');
+$pgn = trim($data['pgn'] ?? '');
+$move = trim($data['move'] ?? '');
+
+if ($fen === '' || $pgn === '' || $move === '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'Missing required fields (fen, pgn, move).']);
+    exit;
+}
+
+try {
+    $db = get_db();
+
+    // Load the latest active game.
+    $stmt = $db->query("
+        SELECT id, host_color, visitor_color, turn_color, status
+        FROM games
+        WHERE status = 'active'
+        ORDER BY updated_at DESC
+        LIMIT 1
+    ");
+    $game = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$game) {
+        http_response_code(400);
+        echo json_encode(['error' => 'No active game found.']);
+        exit;
+    }
+
+    if ($game['turn_color'] !== $game['host_color']) {
+        http_response_code(400);
+        echo json_encode(['error' => 'It is not the host turn.']);
+        exit;
+    }
+
+    // Flip turn to visitors after saving the host move.
+    $nextTurn = $game['visitor_color'];
+
+    $update = $db->prepare("
+        UPDATE games
+        SET fen = :fen,
+            pgn = :pgn,
+            last_move_san = :move,
+            turn_color = :turn_color,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :id
+    ");
+
+    $update->execute([
+        ':fen' => $fen,
+        ':pgn' => $pgn,
+        ':move' => $move,
+        ':turn_color' => $nextTurn,
+        ':id' => $game['id'],
+    ]);
+
+    echo json_encode([
+        'ok' => true,
+        'game_id' => (int)$game['id'],
+        'next_turn' => $nextTurn,
+        'message' => 'Move accepted. Visitors may move now.',
+    ]);
+} catch (Throwable $e) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Failed to save move.']);
+}
