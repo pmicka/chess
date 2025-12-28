@@ -1,0 +1,2 @@
+Lichess chess piece SVG set ("cburnett"), © Colin M.L. Burnett.
+Licensed under Creative Commons Attribution-ShareAlike 3.0 (CC BY-SA 3.0).
