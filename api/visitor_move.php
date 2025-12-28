@@ -145,6 +145,7 @@ if ($turnstileResult['success'] !== true) {
 }
 
 $db = null;
+$warning = null;
 
 try {
     $db = get_db();
@@ -214,6 +215,9 @@ try {
         ':id' => $game['id'],
     ]);
 
+    $expiresAt = default_host_token_expiry();
+    $hostToken = insert_host_move_token($db, (int)$game['id'], $expiresAt);
+
     // Fetch the updated state for the response.
     $stateStmt = $db->prepare("
         SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
@@ -228,11 +232,45 @@ try {
 
     $updatedGame['id'] = (int)$updatedGame['id'];
 
-    echo json_encode([
+    // Email host the single-use link. DB changes are already committed.
+    $link = BASE_URL . '/my_move.php?token=' . urlencode($hostToken);
+    $subject = 'Your turn — Me vs the World Chess';
+    $body = "Game ID: {$updatedGame['id']}\n"
+        . "Last visitor move: {$lastMoveSan}\n"
+        . "Link: {$link}\n"
+        . "Token expires at: " . $expiresAt->format('Y-m-d H:i:s T') . "\n";
+
+    $emailHeaders = 'From: ' . MAIL_FROM . "\r\n";
+
+    try {
+        $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
+        if ($mailSent === false) {
+            $warning = 'Email failed';
+        }
+    } catch (Throwable $mailErr) {
+        $warning = 'Email failed';
+    }
+
+    if ($warning !== null) {
+        $logLine = sprintf(
+            "[%s] Failed to send host turn email for game_id=%d\n",
+            datetime_utc()->format('Y-m-d H:i:s'),
+            $updatedGame['id']
+        );
+        @file_put_contents(__DIR__ . '/../data/email.log', $logLine, FILE_APPEND);
+    }
+
+    $response = [
         'ok' => true,
         'game' => $updatedGame,
         'message' => 'Move accepted. Waiting for host.',
-    ]);
+    ];
+
+    if ($warning !== null) {
+        $response['warning'] = $warning;
+    }
+
+    echo json_encode($response);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
