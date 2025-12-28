@@ -332,6 +332,273 @@ function append_pgn_move(string $currentPgn, string $movingColor, string $moveSa
 }
 
 /**
+ * Convert an algebraic square (e.g., "e4") to file/rank indexes.
+ */
+function square_to_coords(string $square): array
+{
+    $square = strtolower(trim($square));
+    if (!preg_match('/^[a-h][1-8]$/', $square)) {
+        throw new InvalidArgumentException('Invalid square: ' . $square);
+    }
+    $file = ord($square[0]) - ord('a');
+    $rank = (int)$square[1];
+    return [
+        'file' => $file,
+        // rankIndex: 0 = rank 8 (top), 7 = rank 1 (bottom)
+        'rankIndex' => 8 - $rank,
+    ];
+}
+
+/**
+ * Convert file/rank indexes back to algebraic square.
+ */
+function coords_to_square(int $file, int $rankIndex): string
+{
+    if ($file < 0 || $file > 7 || $rankIndex < 0 || $rankIndex > 7) {
+        throw new InvalidArgumentException('Invalid coordinates');
+    }
+    $fileChar = chr(ord('a') + $file);
+    $rank = 8 - $rankIndex;
+    return $fileChar . $rank;
+}
+
+/**
+ * Parse the board portion of a FEN string into a 2D array.
+ */
+function parse_fen_board(string $boardPart): array
+{
+    $rows = explode('/', $boardPart);
+    if (count($rows) !== 8) {
+        throw new InvalidArgumentException('FEN board must have 8 ranks');
+    }
+
+    $board = [];
+    foreach ($rows as $row) {
+        $cells = [];
+        $len = strlen($row);
+        for ($i = 0; $i < $len; $i++) {
+            $char = $row[$i];
+            if (ctype_digit($char)) {
+                $emptyCount = (int)$char;
+                if ($emptyCount < 1 || $emptyCount > 8) {
+                    throw new InvalidArgumentException('Invalid empty count in FEN row');
+                }
+                for ($j = 0; $j < $emptyCount; $j++) {
+                    $cells[] = null;
+                }
+            } elseif (preg_match('/[prnbqkPRNBQK]/', $char)) {
+                $cells[] = $char;
+            } else {
+                throw new InvalidArgumentException('Invalid piece in FEN: ' . $char);
+            }
+        }
+        if (count($cells) !== 8) {
+            throw new InvalidArgumentException('FEN row must have 8 files');
+        }
+        $board[] = $cells;
+    }
+
+    return $board;
+}
+
+/**
+ * Convert a 2D board array back into the board portion of a FEN string.
+ */
+function board_to_fen(array $board): string
+{
+    if (count($board) !== 8) {
+        throw new InvalidArgumentException('Board must have 8 ranks');
+    }
+
+    $rows = [];
+    for ($r = 0; $r < 8; $r++) {
+        $row = $board[$r] ?? [];
+        if (count($row) !== 8) {
+            throw new InvalidArgumentException('Board row must have 8 files');
+        }
+        $fenRow = '';
+        $empty = 0;
+        for ($c = 0; $c < 8; $c++) {
+            $cell = $row[$c];
+            if ($cell === null) {
+                $empty++;
+            } else {
+                if ($empty > 0) {
+                    $fenRow .= $empty;
+                    $empty = 0;
+                }
+                $fenRow .= $cell;
+            }
+        }
+        if ($empty > 0) {
+            $fenRow .= $empty;
+        }
+        $rows[] = $fenRow;
+    }
+
+    return implode('/', $rows);
+}
+
+/**
+ * Remove castling rights from the castling field.
+ */
+function strip_castling_rights(string $castling, array $rightsToRemove): string
+{
+    if ($castling === '-' || $castling === '') {
+        return '-';
+    }
+
+    $rights = str_split($castling);
+    $filtered = array_values(array_diff($rights, $rightsToRemove));
+    return empty($filtered) ? '-' : implode('', $filtered);
+}
+
+/**
+ * Apply a single (already-legitimated) move to a FEN string.
+ * This does not perform deep legality checking but ensures the board
+ * transformation matches the provided move.
+ */
+function apply_move_to_fen(string $fen, string $from, string $to, string $promotion, string $movingColor): string
+{
+    $parts = preg_split('/\\s+/', trim($fen));
+    if (count($parts) < 6) {
+        throw new InvalidArgumentException('Invalid FEN');
+    }
+
+    [$boardPart, $activeColor, $castling, $enPassant, $halfmove, $fullmove] = $parts;
+    $activeColor = strtolower($activeColor) === 'b' ? 'b' : 'w';
+    $movingColor = strtolower($movingColor) === 'black' ? 'b' : 'w';
+
+    if ($activeColor !== $movingColor) {
+        throw new InvalidArgumentException('Move color does not match active color');
+    }
+
+    $board = parse_fen_board($boardPart);
+    $fromCoords = square_to_coords($from);
+    $toCoords = square_to_coords($to);
+
+    $piece = $board[$fromCoords['rankIndex']][$fromCoords['file']] ?? null;
+    if ($piece === null) {
+        throw new InvalidArgumentException('No piece on from-square');
+    }
+
+    $isWhitePiece = ctype_upper($piece);
+    if (($movingColor === 'w' && !$isWhitePiece) || ($movingColor === 'b' && $isWhitePiece)) {
+        throw new InvalidArgumentException('Piece color mismatch for move');
+    }
+
+    $targetPiece = $board[$toCoords['rankIndex']][$toCoords['file']] ?? null;
+    $isPawn = strtolower($piece) === 'p';
+    $isKing = strtolower($piece) === 'k';
+    $fileDiff = $toCoords['file'] - $fromCoords['file'];
+    $rankDiff = $toCoords['rankIndex'] - $fromCoords['rankIndex'];
+    $newCastling = $castling === '' ? '-' : $castling;
+    $captureOccurred = false;
+
+    // Clear source square
+    $board[$fromCoords['rankIndex']][$fromCoords['file']] = null;
+
+    $isCastling = $isKing && abs($fileDiff) === 2;
+    if ($isCastling) {
+        // Move king
+        $board[$toCoords['rankIndex']][$toCoords['file']] = $piece;
+        // Move rook depending on side
+        if ($movingColor === 'w') {
+            if ($to === 'g1') { // kingside
+                $board[7][5] = $board[7][7];
+                $board[7][7] = null;
+            } elseif ($to === 'c1') { // queenside
+                $board[7][3] = $board[7][0];
+                $board[7][0] = null;
+            }
+            $newCastling = strip_castling_rights($newCastling, ['K', 'Q']);
+        } else {
+            if ($to === 'g8') {
+                $board[0][5] = $board[0][7];
+                $board[0][7] = null;
+            } elseif ($to === 'c8') {
+                $board[0][3] = $board[0][0];
+                $board[0][0] = null;
+            }
+            $newCastling = strip_castling_rights($newCastling, ['k', 'q']);
+        }
+    } else {
+        // Handle en passant capture
+        if ($isPawn && $targetPiece === null && $fromCoords['file'] !== $toCoords['file'] && strtolower($enPassant) === strtolower($to)) {
+            $captureRank = $movingColor === 'w' ? $toCoords['rankIndex'] + 1 : $toCoords['rankIndex'] - 1;
+            if ($captureRank < 0 || $captureRank > 7) {
+                throw new InvalidArgumentException('Invalid en passant capture');
+            }
+            $capturedEp = $board[$captureRank][$toCoords['file']] ?? null;
+            if ($capturedEp === null) {
+                throw new InvalidArgumentException('Invalid en passant capture target');
+            }
+            $isCapturedWhite = ctype_upper($capturedEp);
+            if (($movingColor === 'w' && $isCapturedWhite) || ($movingColor === 'b' && !$isCapturedWhite)) {
+                throw new InvalidArgumentException('Invalid en passant capture target');
+            }
+            $board[$captureRank][$toCoords['file']] = null;
+            $captureOccurred = true;
+        }
+
+        if ($targetPiece !== null) {
+            $captureOccurred = true;
+        }
+
+        // Place moved piece (with promotion if applicable)
+        if ($isPawn && (($movingColor === 'w' && $toCoords['rankIndex'] === 0) || ($movingColor === 'b' && $toCoords['rankIndex'] === 7))) {
+            $promoPiece = strtolower($promotion ?: 'q')[0];
+            $piece = $movingColor === 'w' ? strtoupper($promoPiece) : strtolower($promoPiece);
+        }
+        $board[$toCoords['rankIndex']][$toCoords['file']] = $piece;
+
+        // Update castling rights when king or rook move/captured
+        if ($isKing) {
+            $newCastling = strip_castling_rights($newCastling, $movingColor === 'w' ? ['K', 'Q'] : ['k', 'q']);
+        }
+        if (strtolower($piece) === 'r') {
+            // Rook moved from its original square
+            $fromSquare = strtolower($from);
+            if ($fromSquare === 'h1') $newCastling = strip_castling_rights($newCastling, ['K']);
+            if ($fromSquare === 'a1') $newCastling = strip_castling_rights($newCastling, ['Q']);
+            if ($fromSquare === 'h8') $newCastling = strip_castling_rights($newCastling, ['k']);
+            if ($fromSquare === 'a8') $newCastling = strip_castling_rights($newCastling, ['q']);
+        }
+        if (strtolower($to) === 'h1') $newCastling = strip_castling_rights($newCastling, ['K']);
+        if (strtolower($to) === 'a1') $newCastling = strip_castling_rights($newCastling, ['Q']);
+        if (strtolower($to) === 'h8') $newCastling = strip_castling_rights($newCastling, ['k']);
+        if (strtolower($to) === 'a8') $newCastling = strip_castling_rights($newCastling, ['q']);
+    }
+
+    // En passant target
+    $newEnPassant = '-';
+    if ($isPawn && abs($rankDiff) === 2) {
+        $epRankIndex = $movingColor === 'w' ? $fromCoords['rankIndex'] - 1 : $fromCoords['rankIndex'] + 1;
+        $newEnPassant = coords_to_square($fromCoords['file'], $epRankIndex);
+    }
+
+    // Halfmove clock
+    $halfmoveClock = is_numeric($halfmove) ? (int)$halfmove : 0;
+    if ($isPawn || $captureOccurred) {
+        $halfmoveClock = 0;
+    } else {
+        $halfmoveClock++;
+    }
+
+    // Fullmove number increments after black's move
+    $fullmoveNumber = is_numeric($fullmove) ? (int)$fullmove : 1;
+    if ($movingColor === 'b') {
+        $fullmoveNumber = max(1, $fullmoveNumber + 1);
+    }
+
+    $nextColor = $movingColor === 'w' ? 'b' : 'w';
+    $boardFen = board_to_fen($board);
+    $castlingField = $newCastling === '' ? '-' : $newCastling;
+
+    return trim("{$boardFen} {$nextColor} {$castlingField} {$newEnPassant} {$halfmoveClock} {$fullmoveNumber}");
+}
+
+/**
  * Send the host-turn email for the given game/token.
  */
 function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface $expiresAt, string $lastMoveSan): array
