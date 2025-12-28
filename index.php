@@ -94,6 +94,12 @@ require_once __DIR__ . '/config.php';
     .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
     .status-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 14px; }
     .selected-move { margin-top: 8px; font-size: 14px; }
+    .promotion-chooser { display: none; margin-top: 8px; }
+    .promotion-chooser.show { display: block; }
+    .promotion-chooser .label { font-size: 14px; margin-bottom: 6px; color: #333; }
+    .promotion-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    .promotion-buttons .promo-btn { background: #fff; color: #111; border: 1px solid #111; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+    .promotion-buttons .promo-btn.active { background: #111; color: #fff; }
     code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
     .muted { color: #555; }
     .error { color: #b00020; }
@@ -180,6 +186,15 @@ require_once __DIR__ . '/config.php';
       <p class="muted selected-move">
         Selected move: <code id="movePreview">none</code>
       </p>
+      <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
+        <div class="label">Promote to:</div>
+        <div class="promotion-buttons">
+          <button type="button" class="promo-btn active" data-piece="q">Queen</button>
+          <button type="button" class="promo-btn" data-piece="r">Rook</button>
+          <button type="button" class="promo-btn" data-piece="b">Bishop</button>
+          <button type="button" class="promo-btn" data-piece="n">Knight</button>
+        </div>
+      </div>
       <div id="updateBanner" class="banner" role="status" aria-live="polite">
         <span>New server state available. Refresh to sync.</span>
         <button id="btnBannerRefresh">Refresh</button>
@@ -229,6 +244,8 @@ require_once __DIR__ . '/config.php';
     const turnstileWidget = document.querySelector('.cf-turnstile');
     const updateBanner = document.getElementById('updateBanner');
     const btnBannerRefresh = document.getElementById('btnBannerRefresh');
+    const promotionChooser = document.getElementById('promotionChooser');
+    const promotionButtons = Array.from(document.querySelectorAll('.promo-btn'));
     boardEl.classList.add('locked');
 
     window.turnstileToken = null;
@@ -243,7 +260,8 @@ require_once __DIR__ . '/config.php';
 
     // selection state
     let selectedSquare = null;
-    let pendingMove = null; // {from,to,promotion?}
+    let pendingMove = null; // {from,to,promotion?,san,requiresPromotion?}
+    let pendingBaseFen = null;
     let lastMoveSquares = null; // {from,to}
     let selectionStateFingerprint = null;
     let latestFetchedStateFingerprint = null;
@@ -251,6 +269,7 @@ require_once __DIR__ . '/config.php';
     let selectionIsStale = false;
     let pollHandle = null;
     let submitting = false;
+    let promotionChoice = 'q';
 
     function renderPiecePlaceholder(piece) {
       if (!piece) return null;
@@ -350,14 +369,37 @@ require_once __DIR__ . '/config.php';
 
       updateHighlights();
     }
-    function clearSelection() {
+
+    function resetPromotionChooser() {
+      promotionChoice = 'q';
+      promotionButtons.forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+      });
+      promotionChooser.classList.remove('show');
+    }
+
+    function clearSelection({ restore = false } = {}) {
+      const hadPending = Boolean(pendingBaseFen);
+      if (restore && pendingBaseFen) {
+        try {
+          game.load(pendingBaseFen);
+        } catch (err) {
+          // ignore restore errors
+        }
+      }
       selectedSquare = null;
       pendingMove = null;
+      pendingBaseFen = null;
       selectionStateFingerprint = null;
       selectionIsStale = false;
       movePreview.textContent = 'none';
       btnSubmit.disabled = true;
-      updateHighlights();
+      resetPromotionChooser();
+      if (restore && hadPending) {
+        renderBoard();
+      } else {
+        updateHighlights();
+      }
     }
 
     function clearErrors() {
@@ -393,6 +435,49 @@ require_once __DIR__ . '/config.php';
       }
     }
 
+    function promotionInfoForMove(from, to) {
+      const moves = game.moves({ square: from, verbose: true });
+      const matches = moves.filter((m) => m.to === to);
+      const promotionMoves = matches.filter((m) => m.promotion);
+      return {
+        isPromotion: promotionMoves.length > 0,
+        moves: promotionMoves,
+      };
+    }
+
+    function selectPromotionChoice(piece) {
+      const nextChoice = (piece || 'q').toLowerCase();
+      promotionChoice = nextChoice;
+      promotionButtons.forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+      });
+      if (promotionChooser && pendingMove && pendingMove.requiresPromotion && pendingBaseFen) {
+        try {
+          game.load(pendingBaseFen);
+          const move = game.move({
+            from: pendingMove.from,
+            to: pendingMove.to,
+            promotion: promotionChoice,
+          });
+          if (move) {
+            pendingMove = {
+              from: move.from,
+              to: move.to,
+              promotion: move.promotion || promotionChoice,
+              san: move.san,
+              requiresPromotion: true,
+            };
+            lastMoveSquares = { from: move.from, to: move.to };
+            movePreview.textContent = `${move.san} (${move.from}→${move.to})`;
+            btnSubmit.disabled = false;
+            renderBoard();
+          }
+        } catch (err) {
+          setStatus('Invalid promotion selection', 'error');
+        }
+      }
+    }
+
     function isVisitorsTurn() {
       if (!state) return false;
       return state.turn_color === visitorColor && state.status === 'active';
@@ -414,6 +499,10 @@ require_once __DIR__ . '/config.php';
 
     function onSquareClick(sq) {
       if (!state) return;
+
+      if (pendingMove && !selectedSquare) {
+        clearSelection({ restore: true });
+      }
 
       if (!isVisitorsTurn()) {
         return;
@@ -444,14 +533,50 @@ require_once __DIR__ . '/config.php';
         return;
       }
 
+      const promoInfo = promotionInfoForMove(selectedSquare, sq);
+      const promoOptions = promoInfo.moves.map((m) => m.promotion).filter(Boolean);
+      let promoToUse = promotionChoice;
+      if (promoInfo.isPromotion) {
+        if (!promoOptions.includes(promoToUse)) {
+          promoToUse = promoOptions[0] || 'q';
+        }
+      } else {
+        resetPromotionChooser();
+      }
+
+      if (!pendingBaseFen) {
+        pendingBaseFen = game.fen();
+      }
+
       // Attempt move
-      const move = game.move({ from: selectedSquare, to: sq, promotion: 'q' }); // auto-queen for MVP
+      const move = game.move({
+        from: selectedSquare,
+        to: sq,
+        ...(promoInfo.isPromotion ? { promotion: promoToUse } : {}),
+      });
       if (!move) {
         // illegal move
+        if (pendingBaseFen) {
+          try { game.load(pendingBaseFen); } catch (err) { /* ignore */ }
+        }
+        pendingBaseFen = null;
         return;
       }
 
-      pendingMove = { from: move.from, to: move.to, promotion: move.promotion || 'q', san: move.san };
+      pendingMove = {
+        from: move.from,
+        to: move.to,
+        promotion: promoInfo.isPromotion ? (move.promotion || promoToUse) : '',
+        san: move.san,
+        requiresPromotion: promoInfo.isPromotion,
+      };
+      if (promoInfo.isPromotion) {
+        promotionChooser.classList.add('show');
+        promotionButtons.forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.piece === pendingMove.promotion);
+        });
+        promotionChoice = pendingMove.promotion;
+      }
       selectionStateFingerprint = stateFingerprint(state);
       selectionIsStale = false;
       lastMoveSquares = { from: move.from, to: move.to };
@@ -497,7 +622,9 @@ require_once __DIR__ . '/config.php';
       setStatus(message, 'error');
       btnSubmit.disabled = true;
       pendingMove = null;
+      pendingBaseFen = null;
       selectedSquare = null;
+      resetPromotionChooser();
       movePreview.textContent = 'none';
       boardEl.classList.add('locked');
       showErrors([message]);
@@ -666,6 +793,14 @@ require_once __DIR__ . '/config.php';
       startPolling();
     }).catch(handleStateError);
 
+    promotionButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectPromotionChoice(btn.dataset.piece);
+        promotionChooser.classList.add('show');
+      });
+    });
+    resetPromotionChooser();
+
     btnRefresh.addEventListener('click', applyQueuedStateOrFetch);
     btnBannerRefresh.addEventListener('click', applyQueuedStateOrFetch);
 
@@ -706,7 +841,7 @@ require_once __DIR__ . '/config.php';
             last_move_san: pendingMove.san,
             from: pendingMove.from,
             to: pendingMove.to,
-            promotion: pendingMove.promotion || 'q',
+            promotion: pendingMove && pendingMove.requiresPromotion ? pendingMove.promotion : '',
             last_known_updated_at: state.updated_at,
             turnstile_token: window.turnstileToken,
             client_fen: game.fen()
@@ -741,6 +876,8 @@ require_once __DIR__ . '/config.php';
 
         setStatus('Move accepted. Waiting on host.', 'ok');
         pendingMove = null;
+        pendingBaseFen = null;
+        resetPromotionChooser();
         resetTurnstile();
 
         // Refresh canonical state from server
