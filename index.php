@@ -63,6 +63,8 @@ require_once __DIR__ . '/config.php';
     .ok { color: #0a7d2c; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
     textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 12px; }
+    .banner { display: none; margin-top: 10px; padding: 10px; background: #fff4ce; border: 1px solid #f0ad4e; border-radius: 8px; }
+    .banner.show { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
@@ -98,6 +100,10 @@ require_once __DIR__ . '/config.php';
         <p class="muted" style="margin-top:10px;">
           Selected move: <code id="movePreview">none</code>
         </p>
+        <div id="updateBanner" class="banner" role="status" aria-live="polite">
+          <span>New server state available. Refresh to sync.</span>
+          <button id="btnBannerRefresh">Refresh</button>
+        </div>
       </div>
 
       <div class="card" style="flex:1; min-width: 320px;">
@@ -126,6 +132,8 @@ require_once __DIR__ . '/config.php';
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
     const turnstileWidget = document.querySelector('.cf-turnstile');
+    const updateBanner = document.getElementById('updateBanner');
+    const btnBannerRefresh = document.getElementById('btnBannerRefresh');
     boardEl.classList.add('locked');
 
     window.turnstileToken = null;
@@ -140,6 +148,11 @@ require_once __DIR__ . '/config.php';
     let selectedSquare = null;
     let pendingMove = null; // {from,to,promotion?}
     let lastMoveSquares = null; // {from,to}
+    let selectionStateFingerprint = null;
+    let latestFetchedStateFingerprint = null;
+    let queuedServerState = null;
+    let selectionIsStale = false;
+    let pollHandle = null;
 
     const pieceToChar = (p) => {
       // Using simple unicode pieces. p: {type, color} from chess.js board()
@@ -227,6 +240,8 @@ require_once __DIR__ . '/config.php';
     function clearSelection() {
       selectedSquare = null;
       pendingMove = null;
+      selectionStateFingerprint = null;
+      selectionIsStale = false;
       movePreview.textContent = 'none';
       btnSubmit.disabled = true;
       updateHighlights();
@@ -263,6 +278,20 @@ require_once __DIR__ . '/config.php';
     function isVisitorsTurn() {
       if (!state) return false;
       return state.turn_color === visitorColor && state.status === 'active';
+    }
+
+    function stateFingerprint(obj) {
+      if (!obj) return null;
+      return `${obj.updated_at ?? ''}|${obj.fen ?? ''}`;
+    }
+
+    function showUpdateBanner() {
+      updateBanner.classList.add('show');
+    }
+
+    function hideUpdateBanner() {
+      updateBanner.classList.remove('show');
+      queuedServerState = null;
     }
 
     function onSquareClick(sq) {
@@ -305,6 +334,8 @@ require_once __DIR__ . '/config.php';
       }
 
       pendingMove = { from: move.from, to: move.to, promotion: move.promotion || 'q', san: move.san };
+      selectionStateFingerprint = stateFingerprint(state);
+      selectionIsStale = false;
       lastMoveSquares = { from: move.from, to: move.to };
       movePreview.textContent = `${move.san} (${move.from}→${move.to})`;
       btnSubmit.disabled = false;
@@ -385,19 +416,13 @@ require_once __DIR__ . '/config.php';
       }
     }
 
-    async function fetchState() {
-      statusMsg.textContent = 'Loading…';
-      clearSelection();
-
-      const res = await fetch('api/state.php', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load state');
-      const json = await res.json();
-
-      // Your current endpoint returns the flat object, not wrapped in {ok:true}
-      state = json;
-
+    function applyStateData(newState, { resetSelection = true } = {}) {
+      state = newState;
+      latestFetchedStateFingerprint = stateFingerprint(newState);
       visitorColor = state.visitor_color;
       hostColor = state.you_color;
+      queuedServerState = null;
+      selectionIsStale = false;
 
       visitorColorLabel.textContent = visitorColor;
       hostColorLabel.textContent = hostColor;
@@ -414,8 +439,48 @@ require_once __DIR__ . '/config.php';
 
       updateStatusMessage();
 
-      // Disable submit unless a move is pending
-      btnSubmit.disabled = true;
+      if (resetSelection) {
+        clearSelection();
+      } else {
+        updateHighlights();
+        if (!pendingMove) {
+          btnSubmit.disabled = true;
+        }
+      }
+
+      hideUpdateBanner();
+    }
+
+    function handleIncomingState(newState, { resetSelection = true, allowQueue = false } = {}) {
+      latestFetchedStateFingerprint = stateFingerprint(newState);
+      const currentFingerprint = stateFingerprint(state);
+      const hasChanged = !currentFingerprint || currentFingerprint !== latestFetchedStateFingerprint;
+
+      if (pendingMove && hasChanged && allowQueue) {
+        queuedServerState = newState;
+        selectionIsStale = true;
+        statusMsg.textContent = 'New server state available. Refresh to sync.';
+        statusMsg.className = 'muted';
+        btnSubmit.disabled = true;
+        showUpdateBanner();
+        return;
+      }
+
+      const shouldResetSelection = resetSelection || hasChanged;
+      applyStateData(newState, { resetSelection: shouldResetSelection });
+    }
+
+    async function fetchState(options = {}) {
+      const { resetSelection = true, allowQueue = false, silent = false } = options;
+      if (!silent) {
+        statusMsg.textContent = 'Loading…';
+      }
+
+      const res = await fetch('api/state.php', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to load state');
+      const json = await res.json();
+
+      handleIncomingState(json, { resetSelection, allowQueue });
     }
 
     function handleStateError(err) {
@@ -424,14 +489,53 @@ require_once __DIR__ . '/config.php';
       boardEl.classList.add('locked');
     }
 
-    // Load state on first render so visitors see the board immediately.
-    fetchState().catch(handleStateError);
+    function startPolling() {
+      if (pollHandle) return;
+      pollHandle = setInterval(() => {
+        fetchState({ resetSelection: false, allowQueue: true, silent: true }).catch((err) => {
+          console.error('Polling failed', err);
+        });
+      }, 15000);
+    }
 
-    btnRefresh.addEventListener('click', () => fetchState().catch(handleStateError));
+    function applyQueuedStateOrFetch() {
+      if (queuedServerState) {
+        applyStateData(queuedServerState, { resetSelection: true });
+        return;
+      }
+      fetchState({ resetSelection: true }).catch(handleStateError);
+    }
+
+    // Load state on first render so visitors see the board immediately.
+    fetchState().then(startPolling).catch(handleStateError);
+
+    btnRefresh.addEventListener('click', applyQueuedStateOrFetch);
+    btnBannerRefresh.addEventListener('click', applyQueuedStateOrFetch);
 
     btnSubmit.addEventListener('click', async () => {
       if (!pendingMove || !state) return;
       if (!ensureTokenPresent()) return;
+
+      const latestKnownFingerprint = latestFetchedStateFingerprint || stateFingerprint(state);
+      if (
+        selectionStateFingerprint &&
+        latestKnownFingerprint &&
+        selectionStateFingerprint !== latestKnownFingerprint
+      ) {
+        statusMsg.textContent = 'Server state changed. Refresh before submitting.';
+        statusMsg.className = 'error';
+        btnSubmit.disabled = true;
+        showUpdateBanner();
+        return;
+      }
+
+      if (selectionIsStale || queuedServerState) {
+        statusMsg.textContent = 'Server state changed. Refresh before submitting.';
+        statusMsg.className = 'error';
+        btnSubmit.disabled = true;
+        showUpdateBanner();
+        return;
+      }
 
       btnSubmit.disabled = true;
       statusMsg.textContent = 'Submitting...';
