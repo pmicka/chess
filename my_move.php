@@ -89,35 +89,77 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Host Move - Me vs the World Chess</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-    .wrap { max-width: 980px; margin: 0 auto; }
-    .row { display: flex; gap: 24px; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
-    .board-container { max-width: 520px; width: min(90vw, 520px); }
+    :root {
+      --border: #e2e5e9;
+      --card-radius: 12px;
+      --card-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f7f7f8;
+      color: #111;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+    h1 { margin: 0 0 8px; }
+    .subhead { margin: 0 0 14px; color: #555; }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 16px;
+      box-shadow: var(--card-shadow);
+    }
+    .card + .card { margin-top: 16px; }
+    .board-container {
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+    }
     .board-shell { position: relative; width: 100%; aspect-ratio: 1 / 1; }
     .board-shell::before { content: ''; display: block; padding-bottom: 100%; }
     @supports (aspect-ratio: 1 / 1) {
       .board-shell::before { display: none; padding-bottom: 0; }
     }
-    #board { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr); border: 2px solid #111; border-radius: 8px; overflow: hidden; }
+    #board { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr); border: 2px solid #111; border-radius: 10px; overflow: hidden; }
     .sq { display:flex; align-items:center; justify-content:center; font-size: 28px; user-select: none; }
-    .label { display:flex; align-items:center; justify-content:center; font-size: 12px; color: #555; background: #f8f8f8; }
+    .label { display:flex; align-items:center; justify-content:center; font-size: 12px; color: #555; background: #f3f4f6; }
     .corner { background: transparent; }
     .light { background: #f0d9b5; }
     .dark  { background: #b58863; }
     .sq.pick { outline: 3px solid #0a84ff; outline-offset: -3px; }
     .sq.hint { box-shadow: inset 0 0 0 4px rgba(10,132,255,.35); }
     .piece-svg { width: 80%; height: 80%; pointer-events: none; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #333; background: #111; color: #fff; cursor: pointer; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #111; background: #111; color: #fff; cursor: pointer; font-size: 14px; }
     button:disabled { opacity: .4; cursor: not-allowed; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .status-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 14px; }
+    .selected-move { margin-top: 8px; font-size: 14px; }
     code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
     .muted { color: #555; }
     .error { color: #b00020; }
     .ok { color: #0a7d2c; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-    textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 12px; }
-    .status-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .small-note { font-size: 13px; }
+    textarea { width: 100%; min-height: 96px; font-family: ui-monospace, monospace; font-size: 12px; border-radius: 10px; border: 1px solid var(--border); padding: 10px; background: #f9fafb; }
+    .copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+    .copy-note { min-width: 70px; color: #0a7d2c; }
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ddd;
+      border-top-color: #111;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    .spinner.show { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .extra-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -126,7 +168,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     <?php if (isset($_GET['fresh']) && $_GET['fresh'] === '1'): ?>
       <p class="ok">Issued a fresh link for your current turn.</p>
     <?php endif; ?>
-    <p class="muted">
+    <p class="subhead">
       You play <strong id="hostColorLabel">white</strong>. Visitors play <strong id="visitorColorLabel">black</strong>.
       Turn: <strong id="turnLabel">...</strong>.
     </p>
@@ -134,38 +176,47 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     <p class="muted">This link expires at <strong><?php echo htmlspecialchars($tokenExpiresDisplay, ENT_QUOTES, 'UTF-8'); ?></strong>.</p>
     <?php endif; ?>
 
-    <div class="row">
-      <div class="card">
-        <div class="board-container">
-          <div class="board-shell">
-            <div id="board" aria-label="Chess board"></div>
-          </div>
+    <div class="card">
+      <div class="board-container">
+        <div class="board-shell">
+          <div id="board" aria-label="Chess board"></div>
         </div>
-        <div class="status-row" style="margin-top:12px;">
-          <button id="btnRefresh">Refresh</button>
-          <button id="btnSubmit" disabled>Submit move</button>
-          <button id="btnCopyLink" type="button">Copy this link</button>
-          <button id="btnResend" type="button">Resend link to my email</button>
-          <span id="statusMsg" class="muted"></span>
-        </div>
-        <div class="status-row small-note" style="margin-top:6px;">
-          <span id="lastUpdated" class="muted">Last updated: ...</span>
-          <span id="copyStatus" class="muted"></span>
-          <span id="resendStatus" class="muted"></span>
-        </div>
-        <p class="muted" style="margin-top:10px;">
-          Selected move: <code id="movePreview">none</code>
-        </p>
       </div>
+      <div class="controls">
+        <button id="btnRefresh">Refresh</button>
+        <button id="btnSubmit" disabled>Submit move</button>
+      </div>
+      <div class="status-line" aria-live="polite">
+        <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+        <span id="statusMsg" class="muted"></span>
+        <span id="lastUpdated" class="muted">Last updated: ...</span>
+      </div>
+      <p class="muted selected-move">
+        Selected move: <code id="movePreview">none</code>
+      </p>
+      <div class="extra-actions">
+        <button id="btnCopyLink" type="button">Copy this link</button>
+        <button id="btnResend" type="button">Resend link to my email</button>
+        <span id="copyStatus" class="muted"></span>
+        <span id="resendStatus" class="muted"></span>
+      </div>
+    </div>
 
-      <div class="card" style="flex:1; min-width: 320px;">
-        <h3>Game State</h3>
-        <p class="muted">FEN:</p>
-        <textarea id="fenBox" readonly></textarea>
-        <p class="muted">PGN:</p>
-        <textarea id="pgnBox" readonly></textarea>
-        <p class="muted mono" id="debugBox"></p>
+    <div class="card">
+      <h3>Game State</h3>
+      <p class="muted">FEN:</p>
+      <textarea id="fenBox" readonly></textarea>
+      <div class="copy-row">
+        <button id="copyFenBtn">Copy FEN</button>
+        <span id="copyFenMsg" class="copy-note" aria-live="polite"></span>
       </div>
+      <p class="muted">PGN:</p>
+      <textarea id="pgnBox" readonly></textarea>
+      <div class="copy-row">
+        <button id="copyPgnBtn">Copy PGN</button>
+        <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
+      </div>
+      <p class="muted mono" id="debugBox"></p>
     </div>
   </div>
 
@@ -180,11 +231,16 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const btnCopyLink = document.getElementById('btnCopyLink');
     const btnResend = document.getElementById('btnResend');
     const statusMsg = document.getElementById('statusMsg');
+    const statusSpinner = document.getElementById('statusSpinner');
     const copyStatus = document.getElementById('copyStatus');
     const resendStatus = document.getElementById('resendStatus');
     const movePreview = document.getElementById('movePreview');
     const fenBox = document.getElementById('fenBox');
     const pgnBox = document.getElementById('pgnBox');
+    const copyFenBtn = document.getElementById('copyFenBtn');
+    const copyPgnBtn = document.getElementById('copyPgnBtn');
+    const copyFenMsg = document.getElementById('copyFenMsg');
+    const copyPgnMsg = document.getElementById('copyPgnMsg');
     const debugBox = document.getElementById('debugBox');
     const lastUpdatedEl = document.getElementById('lastUpdated');
     const visitorColorLabel = document.getElementById('visitorColorLabel');
@@ -201,6 +257,14 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     let selectedSquare = null;
     let pendingMove = null; // {from,to,promotion,san}
     let lastUpdatedTs = null;
+
+    function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
+      statusMsg.textContent = message;
+      statusMsg.className = tone;
+      if (statusSpinner) {
+        statusSpinner.classList.toggle('show', showSpinner);
+      }
+    }
 
     const renderPiece = (p) => {
       if (!p) return '';
@@ -376,8 +440,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     }
 
     async function fetchState() {
-      statusMsg.textContent = 'Loading...';
-      statusMsg.className = 'muted';
+      setStatus('Loading…', 'muted', { showSpinner: true });
       clearSelection();
       updateLastUpdated('Updating...', 'muted');
       btnRefresh.disabled = true;
@@ -420,30 +483,31 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
         lastUpdatedTs = state.updated_at || null;
         updateLastUpdated(formatTimestamp(lastUpdatedTs), 'muted');
 
-        statusMsg.textContent = isYourTurn() ? 'Your turn.' : 'Waiting on visitors.';
-        statusMsg.className = isYourTurn() ? 'ok' : 'muted';
+        setStatus(isYourTurn() ? 'Your turn.' : 'Waiting on visitors.', isYourTurn() ? 'ok' : 'muted');
         btnSubmit.disabled = true;
+        if (statusSpinner) statusSpinner.classList.remove('show');
+      } catch (err) {
+        setStatus(err.message || 'Failed to load state', 'error');
+        updateLastUpdated('Failed to load', 'error');
+        throw err;
       } finally {
         btnRefresh.disabled = false;
       }
     }
 
     btnRefresh.addEventListener('click', () => fetchState().catch(err => {
-      statusMsg.textContent = err.message;
-      statusMsg.className = 'error';
+      setStatus(err.message || 'Failed to refresh', 'error');
       updateLastUpdated('Failed to refresh', 'error');
     }));
 
     btnSubmit.addEventListener('click', async () => {
       if (!hostToken) {
-        statusMsg.textContent = 'Missing token. Please use the link from your email.';
-        statusMsg.className = 'error';
+        setStatus('Missing token. Please use the link from your email.', 'error');
         return;
       }
       if (!pendingMove || !state) return;
       btnSubmit.disabled = true;
-      statusMsg.textContent = 'Submitting...';
-      statusMsg.className = 'muted';
+      setStatus('Submitting…', 'muted', { showSpinner: true });
 
       const payload = {
         fen: game.fen(),
@@ -464,12 +528,10 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           throw new Error(json.error || 'Move rejected');
         }
 
-        statusMsg.textContent = json.message || 'Move accepted. Visitors may move now.';
-        statusMsg.className = 'ok';
+        setStatus(json.message || 'Move accepted. Visitors may move now.', 'ok');
         await fetchState();
       } catch (err) {
-        statusMsg.textContent = err.message;
-        statusMsg.className = 'error';
+        setStatus(err.message || 'Move rejected', 'error');
         btnSubmit.disabled = false;
       }
     });
@@ -523,9 +585,38 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
     });
 
+    function clearCopyNotes() {
+      copyFenMsg.textContent = '';
+      copyPgnMsg.textContent = '';
+    }
+
+    async function copyText(value, targetMsgEl) {
+      clearCopyNotes();
+      const text = value || '';
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const temp = document.createElement('textarea');
+          temp.value = text;
+          temp.style.position = 'fixed';
+          temp.style.opacity = '0';
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          document.body.removeChild(temp);
+        }
+        targetMsgEl.textContent = 'Copied';
+      } catch (err) {
+        targetMsgEl.textContent = 'Copy failed';
+      }
+    }
+
+    copyFenBtn.addEventListener('click', () => copyText(fenBox.value, copyFenMsg));
+    copyPgnBtn.addEventListener('click', () => copyText(pgnBox.value, copyPgnMsg));
+
     fetchState().catch(err => {
-      statusMsg.textContent = err.message;
-      statusMsg.className = 'error';
+      setStatus(err.message || 'Failed to load', 'error');
       updateLastUpdated('Failed to load', 'error');
     });
   </script>

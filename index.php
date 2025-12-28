@@ -35,19 +35,46 @@ require_once __DIR__ . '/config.php';
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Me vs the World Chess</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-    .wrap { max-width: 980px; margin: 0 auto; }
-    .row { display: flex; gap: 24px; flex-wrap: wrap; }
-    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
-    .board-container { max-width: 520px; width: min(90vw, 520px); }
+    :root {
+      --border: #e2e5e9;
+      --card-radius: 12px;
+      --card-shadow: 0 4px 12px rgba(0,0,0,0.04);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f7f7f8;
+      color: #111;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+    h1 { margin: 0 0 8px; }
+    .subhead { margin: 0 0 14px; color: #555; }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--card-radius);
+      padding: 16px;
+      box-shadow: var(--card-shadow);
+    }
+    .card + .card { margin-top: 16px; }
+    .board-container {
+      width: 100%;
+      max-width: 560px;
+      margin: 0 auto;
+    }
     .board-shell { position: relative; width: 100%; aspect-ratio: 1 / 1; }
     .board-shell::before { content: ''; display: block; padding-bottom: 100%; }
     @supports (aspect-ratio: 1 / 1) {
       .board-shell::before { display: none; padding-bottom: 0; }
     }
-    #board { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr); border: 2px solid #111; border-radius: 8px; overflow: hidden; }
+    #board { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr); border: 2px solid #111; border-radius: 10px; overflow: hidden; }
     .sq { display:flex; align-items:center; justify-content:center; font-size: 28px; user-select: none; }
-    .label { display:flex; align-items:center; justify-content:center; font-size: 12px; color: #555; background: #f8f8f8; }
+    .label { display:flex; align-items:center; justify-content:center; font-size: 12px; color: #555; background: #f3f4f6; }
     .corner { background: transparent; }
     .light { background: #f0d9b5; }
     .dark  { background: #b58863; }
@@ -56,19 +83,21 @@ require_once __DIR__ . '/config.php';
     .sq.last { box-shadow: inset 0 0 0 4px rgba(255, 215, 0, 0.9); }
     #board.locked .sq { pointer-events: none; }
     .piece-svg { width: 80%; height: 80%; pointer-events: none; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #333; background: #111; color: #fff; cursor: pointer; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #111; background: #111; color: #fff; cursor: pointer; font-size: 14px; }
     button:disabled { opacity: .4; cursor: not-allowed; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .status-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 14px; }
+    .selected-move { margin-top: 8px; font-size: 14px; }
     code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
     .muted { color: #555; }
     .error { color: #b00020; }
     .ok { color: #0a7d2c; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-    textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 12px; }
-    .copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    textarea { width: 100%; min-height: 96px; font-family: ui-monospace, monospace; font-size: 12px; border-radius: 10px; border: 1px solid var(--border); padding: 10px; background: #f9fafb; }
+    .copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
     .copy-note { min-width: 70px; color: #0a7d2c; }
-    .banner { display: none; margin-top: 10px; padding: 10px; background: #fff4ce; border: 1px solid #f0ad4e; border-radius: 8px; }
+    .banner { display: none; margin-top: 12px; padding: 12px; background: #fff4ce; border: 1px solid #f0ad4e; border-radius: 10px; }
     .banner.show { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-    .status-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .spinner {
       width: 16px;
       height: 16px;
@@ -82,76 +111,75 @@ require_once __DIR__ . '/config.php';
     @keyframes spin { to { transform: rotate(360deg); } }
     .error-block {
       display: none;
-      margin-top: 10px;
+      margin-top: 12px;
       padding: 12px;
       background: #fff0f0;
       border: 1px solid #f0b3b3;
-      border-radius: 8px;
+      border-radius: 10px;
       color: #a0001f;
       white-space: pre-line;
     }
     .error-block.show { display: block; }
+    .turnstile-wrap { margin-top: 12px; }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
   <div class="wrap">
     <h1>Me vs the World Chess</h1>
-    <p class="muted">
+    <p class="subhead">
       Visitors play <strong id="visitorColorLabel">black</strong>. Host plays <strong id="hostColorLabel">white</strong>.
       Turn: <strong id="turnLabel">…</strong>.
     </p>
 
-    <div class="row">
-      <div class="card">
-        <div class="board-container">
-          <div class="board-shell">
-            <div id="board" aria-label="Chess board"></div>
-          </div>
+    <div class="card">
+      <div class="board-container">
+        <div class="board-shell">
+          <div id="board" aria-label="Chess board"></div>
         </div>
-        <div style="margin-top:12px;">
-          <div
-            class="cf-turnstile"
-            data-sitekey="<?= htmlspecialchars(TURNSTILE_SITE_KEY ?? '', ENT_QUOTES) ?>"
-            data-callback="onTurnstileSuccess"
-            data-expired-callback="onTurnstileExpired"
-            data-error-callback="onTurnstileError"
-          ></div>
-        </div>
-        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
-          <button id="btnRefresh">Refresh</button>
-          <button id="btnSubmit" disabled>Submit move</button>
-          <div class="status-row" aria-live="polite">
-            <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
-            <span id="statusMsg" class="muted"></span>
-          </div>
-        </div>
-        <p class="muted" style="margin-top:10px;">
-          Selected move: <code id="movePreview">none</code>
-        </p>
-        <div id="updateBanner" class="banner" role="status" aria-live="polite">
-          <span>New server state available. Refresh to sync.</span>
-          <button id="btnBannerRefresh">Refresh</button>
-        </div>
-        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
       </div>
+      <div class="turnstile-wrap">
+        <div
+          class="cf-turnstile"
+          data-sitekey="<?= htmlspecialchars(TURNSTILE_SITE_KEY ?? '', ENT_QUOTES) ?>"
+          data-callback="onTurnstileSuccess"
+          data-expired-callback="onTurnstileExpired"
+          data-error-callback="onTurnstileError"
+        ></div>
+      </div>
+      <div class="controls">
+        <button id="btnRefresh">Refresh</button>
+        <button id="btnSubmit" disabled>Submit move</button>
+      </div>
+      <div class="status-line" aria-live="polite">
+        <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+        <span id="statusMsg" class="muted"></span>
+      </div>
+      <p class="muted selected-move">
+        Selected move: <code id="movePreview">none</code>
+      </p>
+      <div id="updateBanner" class="banner" role="status" aria-live="polite">
+        <span>New server state available. Refresh to sync.</span>
+        <button id="btnBannerRefresh">Refresh</button>
+      </div>
+      <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
+    </div>
 
-      <div class="card" style="flex:1; min-width: 320px;">
-        <h3>Game State</h3>
-        <p class="muted">FEN:</p>
-        <textarea id="fenBox" readonly></textarea>
-        <div class="copy-row">
-          <button id="copyFenBtn">Copy FEN</button>
-          <span id="copyFenMsg" class="copy-note" aria-live="polite"></span>
-        </div>
-        <p class="muted">PGN:</p>
-        <textarea id="pgnBox" readonly></textarea>
-        <div class="copy-row">
-          <button id="copyPgnBtn">Copy PGN</button>
-          <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
-        </div>
-        <p class="muted mono" id="debugBox"></p>
+    <div class="card">
+      <h3>Game State</h3>
+      <p class="muted">FEN:</p>
+      <textarea id="fenBox" readonly></textarea>
+      <div class="copy-row">
+        <button id="copyFenBtn">Copy FEN</button>
+        <span id="copyFenMsg" class="copy-note" aria-live="polite"></span>
       </div>
+      <p class="muted">PGN:</p>
+      <textarea id="pgnBox" readonly></textarea>
+      <div class="copy-row">
+        <button id="copyPgnBtn">Copy PGN</button>
+        <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
+      </div>
+      <p class="muted mono" id="debugBox"></p>
     </div>
   </div>
 
