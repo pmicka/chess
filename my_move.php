@@ -1,6 +1,6 @@
 <?php
 /**
- * Me vs the World Chess — Host Move Page (Token-Gated)
+ * Me vs the World Chess - Host Move Page (Token-Gated)
  *
  * Intent:
  * - This page is for the host to play their move when notified by email.
@@ -27,7 +27,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Host Move — Me vs the World Chess</title>
+  <title>Host Move - Me vs the World Chess</title>
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
     .wrap { max-width: 980px; margin: 0 auto; }
@@ -106,8 +106,8 @@
 
     const pieceToChar = (p) => {
       const map = {
-        'p':'♟','r':'♜','n':'♞','b':'♝','q':'♛','k':'♚',
-        'P':'♙','R':'♖','N':'♘','B':'♗','Q':'♕','K':'♔'
+       'p':'p','r':'r','n':'n','b':'b','q':'q','k':'k',
+       'P':'P','R':'R','N':'N','B':'B','Q':'Q','K':'K'
       };
       const key = (p.color === 'w') ? p.type.toUpperCase() : p.type;
       return map[key] || '?';
@@ -211,14 +211,14 @@
       }
 
       pendingMove = { from: move.from, to: move.to, promotion: move.promotion || 'q', san: move.san };
-      movePreview.textContent = \`\${move.san} (\${move.from}→\${move.to})\`;
+      movePreview.textContent = \`\${move.san} (\${move.from}->\${move.to})\`;
       btnSubmit.disabled = false;
       selectedSquare = null;
       renderBoard();
     }
 
     async function fetchState() {
-      statusMsg.textContent = 'Loading…';
+      statusMsg.textContent = 'Loading...';
       statusMsg.className = 'muted';
       clearSelection();
 
@@ -256,7 +256,7 @@
     btnSubmit.addEventListener('click', async () => {
       if (!pendingMove || !state) return;
       btnSubmit.disabled = true;
-      statusMsg.textContent = 'Submitting…';
+      statusMsg.textContent = 'Submitting...';
       statusMsg.className = 'muted';
 
       const payload = {
