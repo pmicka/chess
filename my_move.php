@@ -21,6 +21,43 @@
  * - Host may optionally end a game (checkmate/stalemate/resign workflow later)
  * - Ending a game starts a new one and flips host color for the next game.
  */
+require_once __DIR__ . '/db.php';
+
+$tokenValue = isset($_GET['token']) ? trim($_GET['token']) : '';
+$db = get_db();
+$tokenRow = fetch_valid_host_token($db, $tokenValue);
+
+if ($tokenRow) {
+    $gameStmt = $db->prepare("SELECT id, status FROM games WHERE id = :id LIMIT 1");
+    $gameStmt->execute([':id' => $tokenRow['game_id']]);
+    $gameRow = $gameStmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$gameRow || ($gameRow['status'] ?? '') !== 'active') {
+        $tokenRow = null;
+    }
+}
+
+if (!$tokenRow) {
+    ?>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Host Move - Invalid Link</title>
+</head>
+<body>
+  <p>Invalid or expired link.</p>
+</body>
+</html>
+<?php
+    exit;
+}
+
+$tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
+    ? $tokenRow['expires_at_dt']->format('Y-m-d H:i:s T')
+    : null;
+
 ?>
 <!doctype html>
 <html lang="en">
@@ -64,6 +101,9 @@
       You play <strong id="hostColorLabel">white</strong>. Visitors play <strong id="visitorColorLabel">black</strong>.
       Turn: <strong id="turnLabel">...</strong>.
     </p>
+    <?php if ($tokenExpiresDisplay): ?>
+    <p class="muted">This link expires at <strong><?php echo htmlspecialchars($tokenExpiresDisplay, ENT_QUOTES, 'UTF-8'); ?></strong>.</p>
+    <?php endif; ?>
 
     <div class="row">
       <div class="card">
@@ -106,6 +146,7 @@
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
+    const hostToken = <?php echo json_encode($tokenValue, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
 
     const game = new Chess();
     let state = null;
@@ -319,6 +360,7 @@
         fen: game.fen(),
         pgn: game.pgn(),
         move: pendingMove.san,
+        token: hostToken,
       };
 
       try {

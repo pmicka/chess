@@ -42,9 +42,16 @@ if (!is_array($data)) {
     $data = $_POST; // fallback for form-encoded requests
 }
 
+$tokenValue = trim($data['token'] ?? ($_GET['token'] ?? ''));
 $fen = trim($data['fen'] ?? '');
 $pgn = trim($data['pgn'] ?? '');
 $move = trim($data['move'] ?? '');
+
+if ($tokenValue === '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'Missing token.']);
+    exit;
+}
 
 if ($fen === '' || $pgn === '' || $move === '') {
     http_response_code(400);
@@ -58,20 +65,34 @@ try {
     $db = get_db();
     $db->beginTransaction();
 
-    // Load the latest active game.
-    $stmt = $db->query("
+    $tokenRow = fetch_valid_host_token($db, $tokenValue);
+    if (!$tokenRow) {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid or expired token.']);
+        exit;
+    }
+
+    $stmt = $db->prepare("
         SELECT id, host_color, visitor_color, turn_color, status
         FROM games
-        WHERE status = 'active'
-        ORDER BY updated_at DESC
+        WHERE id = :id
         LIMIT 1
     ");
+    $stmt->execute([':id' => $tokenRow['game_id']]);
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$game) {
         $db->rollBack();
         http_response_code(400);
         echo json_encode(['error' => 'No active game found.']);
+        exit;
+    }
+
+    if (($game['status'] ?? '') !== 'active') {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'Game is not active.']);
         exit;
     }
 
@@ -101,6 +122,13 @@ try {
         ':move' => $move,
         ':id' => $game['id'],
     ]);
+
+    $markUsed = $db->prepare("
+        UPDATE tokens
+        SET used = 1, used_at = CURRENT_TIMESTAMP
+        WHERE token = :token
+    ");
+    $markUsed->execute([':token' => $tokenValue]);
 
     // Clear visitor move lock so the next visitor turn can acquire it.
     $db->prepare("DELETE FROM locks WHERE game_id = :id")->execute([':id' => $game['id']]);
