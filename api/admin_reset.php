@@ -5,6 +5,20 @@
 
 header('Content-Type: application/json');
 
+$configPath = __DIR__ . '/../config.php';
+$loadedConfig = false;
+
+if (is_readable($configPath)) {
+    require_once $configPath;
+    $loadedConfig = true;
+}
+
+if (!$loadedConfig || !defined('ADMIN_RESET_KEY') || ADMIN_RESET_KEY === '') {
+    http_response_code(500);
+    echo json_encode(['error' => 'Server misconfigured: ADMIN_RESET_KEY not set']);
+    exit;
+}
+
 require_once __DIR__ . '/../db.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -13,13 +27,61 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$providedSecret = $_POST['secret'] ?? ($_GET['secret'] ?? '');
-if (defined('ADMIN_RESET_KEY') && ADMIN_RESET_KEY !== '') {
-    if (!is_string($providedSecret) || !hash_equals(ADMIN_RESET_KEY, $providedSecret)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Forbidden']);
-        exit;
+$usedKeySource = null;
+$providedKey = '';
+
+$headers = function_exists('getallheaders') ? getallheaders() : [];
+if (!is_array($headers)) {
+    $headers = [];
+}
+
+$headerKey = '';
+foreach ($headers as $name => $value) {
+    if (strcasecmp((string)$name, 'X-Admin-Key') === 0) {
+        $headerKey = (string)$value;
+        break;
     }
+}
+
+if ($headerKey === '' && isset($_SERVER['HTTP_X_ADMIN_KEY'])) {
+    $headerKey = (string)$_SERVER['HTTP_X_ADMIN_KEY'];
+}
+
+if ($headerKey !== '') {
+    $providedKey = $headerKey;
+    $usedKeySource = 'header';
+} else {
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    $bodyKey = '';
+
+    if (stripos($contentType, 'application/json') !== false) {
+        $rawInput = file_get_contents('php://input');
+        $decoded = json_decode($rawInput, true);
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded) && isset($decoded['admin_key'])) {
+            $bodyKey = is_scalar($decoded['admin_key']) ? (string)$decoded['admin_key'] : '';
+        }
+    } else {
+        if (isset($_POST['admin_key'])) {
+            $bodyKey = is_scalar($_POST['admin_key']) ? (string)$_POST['admin_key'] : '';
+        }
+    }
+
+    if ($bodyKey !== '') {
+        $providedKey = $bodyKey;
+        $usedKeySource = 'body';
+    }
+}
+
+if ($providedKey === '' || $usedKeySource === null) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Admin key missing']);
+    exit;
+}
+
+if (!hash_equals(ADMIN_RESET_KEY, $providedKey)) {
+    http_response_code(403);
+    echo json_encode(['error' => 'Forbidden']);
+    exit;
 }
 
 $db = null;
@@ -86,6 +148,8 @@ try {
         'token_expires_at' => ($tokenInfo['expires_at'] instanceof DateTimeInterface)
             ? $tokenInfo['expires_at']->format('Y-m-d H:i:s T')
             : null,
+        'loaded_config' => true,
+        'used_key_source' => $usedKeySource,
     ]);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
