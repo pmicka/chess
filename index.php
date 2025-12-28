@@ -1,3 +1,5 @@
+<?php
+// index.php — Public page (visitors)
 /**
  * Me vs the World Chess — Public Game Page
  *
@@ -23,8 +25,6 @@
  * - The host plays asynchronously via emailed, single-use links (see my_move.php).
  * - Host color flips each completed game (implemented server-side).
  */
-<?php
-// index.php — Public page (visitors)
 ?>
 <!doctype html>
 <html lang="en">
