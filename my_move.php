@@ -266,10 +266,32 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
     }
 
+    function normalizeColorName(value, fallback = 'white') {
+      if (!value) return fallback;
+      const lower = String(value).toLowerCase();
+      if (lower === 'white' || lower === 'w') return 'white';
+      if (lower === 'black' || lower === 'b') return 'black';
+      return fallback;
+    }
+
+    function derivePieceColor(piece) {
+      if (!piece) return null;
+      if (piece.color) {
+        const normalized = normalizeColorName(piece.color, null);
+        if (normalized) return normalized;
+      }
+      if (piece.type) {
+        const symbol = String(piece.type);
+        if (symbol === symbol.toUpperCase()) return 'white';
+        if (symbol === symbol.toLowerCase()) return 'black';
+      }
+      return null;
+    }
+
     const renderPiece = (p) => {
       if (!p) return '';
-      const isWhite = p.color === 'w';
-      const fill = isWhite ? '#f7f7f7' : '#2f2f2f';
+      const color = derivePieceColor(p) || 'white';
+      const fill = color === 'white' ? '#f7f7f7' : '#2f2f2f';
       const stroke = '#5a5a5a';
       return `
         <svg class="piece-svg" viewBox="0 0 100 100" aria-hidden="true">
@@ -281,7 +303,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     function algebraic(file, rank) { return file + rank; }
 
     function getLocalColor() {
-      return youColor || 'white';
+      return normalizeColorName(youColor, 'white');
     }
 
     function getFileOrder() {
@@ -452,8 +474,8 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 
         state = json;
 
-        visitorColor = state.visitor_color;
-        youColor = state.you_color;
+        visitorColor = normalizeColorName(state.visitor_color, 'black');
+        youColor = normalizeColorName(state.you_color, 'white');
 
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = youColor;
