@@ -269,6 +269,30 @@ function fullmove_number_from_fen(string $fen): int
 }
 
 /**
+ * Remove leading PGN header lines (e.g., [FEN "..."]) and blank lines.
+ */
+function strip_pgn_headers(string $pgn): string
+{
+    $lines = preg_split('/\\r?\\n/', (string)$pgn);
+    if ($lines === false) {
+        return trim($pgn);
+    }
+
+    while (!empty($lines)) {
+        $line = $lines[0];
+        $isHeader = preg_match('/^\\s*\\[.*\\]\\s*$/', $line) === 1;
+        $isBlank = trim($line) === '';
+        if ($isHeader || $isBlank) {
+            array_shift($lines);
+            continue;
+        }
+        break;
+    }
+
+    return trim(implode("\n", $lines));
+}
+
+/**
  * Append a SAN move to an existing PGN string.
  *
  * This is a lightweight formatter meant to preserve accumulated PGN history
@@ -276,7 +300,7 @@ function fullmove_number_from_fen(string $fen): int
  */
 function append_pgn_move(string $currentPgn, string $movingColor, string $moveSan, string $fenAfterMove): string
 {
-    $trimmed = trim($currentPgn);
+    $trimmed = trim(strip_pgn_headers($currentPgn));
     $moveSan = trim($moveSan);
     if ($moveSan === '') {
         return $trimmed;
@@ -305,4 +329,44 @@ function append_pgn_move(string $currentPgn, string $movingColor, string $moveSa
     }
 
     return $trimmed . ' ' . $segment;
+}
+
+/**
+ * Send the host-turn email for the given game/token.
+ */
+function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface $expiresAt, string $lastMoveSan): array
+{
+    $warning = null;
+
+    $link = BASE_URL . '/my_move.php?token=' . urlencode($hostToken);
+    $subject = 'Your turn — Me vs the World Chess';
+    $body = "Game ID: {$gameId}\n"
+        . "Last visitor move: {$lastMoveSan}\n"
+        . "Link: {$link}\n"
+        . "Token expires at: " . ($expiresAt instanceof DateTimeInterface ? $expiresAt->format('Y-m-d H:i:s T') : 'n/a') . "\n";
+
+    $emailHeaders = 'From: ' . MAIL_FROM . "\r\n";
+
+    try {
+        $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
+        if ($mailSent === false) {
+            $warning = 'Email failed';
+        }
+    } catch (Throwable $mailErr) {
+        $warning = 'Email failed';
+    }
+
+    if ($warning !== null) {
+        $logLine = sprintf(
+            "[%s] Failed to send host turn email for game_id=%d\n",
+            datetime_utc()->format('Y-m-d H:i:s'),
+            $gameId
+        );
+        @file_put_contents(__DIR__ . '/data/email.log', $logLine, FILE_APPEND);
+    }
+
+    return [
+        'ok' => $warning === null,
+        'warning' => $warning,
+    ];
 }

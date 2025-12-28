@@ -116,6 +116,8 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     .ok { color: #0a7d2c; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
     textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 12px; }
+    .status-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .small-note { font-size: 13px; }
   </style>
 </head>
 <body>
@@ -139,10 +141,17 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
             <div id="board" aria-label="Chess board"></div>
           </div>
         </div>
-        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="status-row" style="margin-top:12px;">
           <button id="btnRefresh">Refresh</button>
           <button id="btnSubmit" disabled>Submit move</button>
+          <button id="btnCopyLink" type="button">Copy this link</button>
+          <button id="btnResend" type="button">Resend link to my email</button>
           <span id="statusMsg" class="muted"></span>
+        </div>
+        <div class="status-row small-note" style="margin-top:6px;">
+          <span id="lastUpdated" class="muted">Last updated: ...</span>
+          <span id="copyStatus" class="muted"></span>
+          <span id="resendStatus" class="muted"></span>
         </div>
         <p class="muted" style="margin-top:10px;">
           Selected move: <code id="movePreview">none</code>
@@ -168,11 +177,16 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const boardEl = document.getElementById('board');
     const btnRefresh = document.getElementById('btnRefresh');
     const btnSubmit = document.getElementById('btnSubmit');
+    const btnCopyLink = document.getElementById('btnCopyLink');
+    const btnResend = document.getElementById('btnResend');
     const statusMsg = document.getElementById('statusMsg');
+    const copyStatus = document.getElementById('copyStatus');
+    const resendStatus = document.getElementById('resendStatus');
     const movePreview = document.getElementById('movePreview');
     const fenBox = document.getElementById('fenBox');
     const pgnBox = document.getElementById('pgnBox');
     const debugBox = document.getElementById('debugBox');
+    const lastUpdatedEl = document.getElementById('lastUpdated');
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
@@ -186,6 +200,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 
     let selectedSquare = null;
     let pendingMove = null; // {from,to,promotion,san}
+    let lastUpdatedTs = null;
 
     const renderPiece = (p) => {
       if (!p) return '';
@@ -278,6 +293,19 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       updateHighlights();
     }
 
+    function formatTimestamp(ts) {
+      if (!ts) return 'unknown';
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return ts;
+      return d.toLocaleString();
+    }
+
+    function updateLastUpdated(displayTs, className = 'muted') {
+      if (!lastUpdatedEl) return;
+      lastUpdatedEl.textContent = `Last updated: ${displayTs}`;
+      lastUpdatedEl.className = className;
+    }
+
     function updateHighlights() {
       const squares = boardEl.querySelectorAll('.sq');
       squares.forEach(el => {
@@ -351,49 +379,59 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       statusMsg.textContent = 'Loading...';
       statusMsg.className = 'muted';
       clearSelection();
+      updateLastUpdated('Updating...', 'muted');
+      btnRefresh.disabled = true;
 
-      const res = await fetch('api/state.php', { cache: 'no-store' });
-      if (!res.ok) throw new Error('Failed to load state');
-      const json = await res.json();
+      try {
+        const res = await fetch('api/state.php', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to load state');
+        const json = await res.json();
 
-      state = json;
+        state = json;
 
-      visitorColor = state.visitor_color;
-      youColor = state.you_color;
+        visitorColor = state.visitor_color;
+        youColor = state.you_color;
 
-      visitorColorLabel.textContent = visitorColor;
-      hostColorLabel.textContent = youColor;
-      turnLabel.textContent = state.turn_color;
+        visitorColorLabel.textContent = visitorColor;
+        hostColorLabel.textContent = youColor;
+        turnLabel.textContent = state.turn_color;
 
-      fenBox.value = state.fen;
-      pgnBox.value = state.pgn;
+        fenBox.value = state.fen;
+        pgnBox.value = state.pgn;
 
-      game.reset();
-      let loadedFromPgn = false;
-      if (state.pgn) {
-        try {
-          game.load_pgn(state.pgn);
-          loadedFromPgn = true;
-        } catch (err) {
-          loadedFromPgn = false;
+        game.reset();
+        let loadedFromPgn = false;
+        if (state.pgn) {
+          try {
+            game.load_pgn(state.pgn);
+            loadedFromPgn = true;
+          } catch (err) {
+            loadedFromPgn = false;
+          }
         }
+
+        if (!loadedFromPgn) {
+          game.load(state.fen);
+        }
+
+        debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
+        renderBoard();
+
+        lastUpdatedTs = state.updated_at || null;
+        updateLastUpdated(formatTimestamp(lastUpdatedTs), 'muted');
+
+        statusMsg.textContent = isYourTurn() ? 'Your turn.' : 'Waiting on visitors.';
+        statusMsg.className = isYourTurn() ? 'ok' : 'muted';
+        btnSubmit.disabled = true;
+      } finally {
+        btnRefresh.disabled = false;
       }
-
-      if (!loadedFromPgn) {
-        game.load(state.fen);
-      }
-
-      debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
-      renderBoard();
-
-      statusMsg.textContent = isYourTurn() ? 'Your turn.' : 'Waiting on visitors.';
-      statusMsg.className = isYourTurn() ? 'ok' : 'muted';
-      btnSubmit.disabled = true;
     }
 
     btnRefresh.addEventListener('click', () => fetchState().catch(err => {
       statusMsg.textContent = err.message;
       statusMsg.className = 'error';
+      updateLastUpdated('Failed to refresh', 'error');
     }));
 
     btnSubmit.addEventListener('click', async () => {
@@ -436,9 +474,59 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
     });
 
+    btnCopyLink.addEventListener('click', async () => {
+      copyStatus.textContent = '';
+      copyStatus.className = 'muted';
+      const link = window.location.href;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(link);
+          copyStatus.textContent = 'Copied.';
+          copyStatus.className = 'ok';
+        } else {
+          throw new Error('Clipboard unavailable');
+        }
+      } catch (err) {
+        copyStatus.textContent = 'Copy blocked. Please copy manually.';
+        copyStatus.className = 'error';
+      }
+    });
+
+    btnResend.addEventListener('click', async () => {
+      if (!hostToken) {
+        resendStatus.textContent = 'Missing token. Use your email link.';
+        resendStatus.className = 'error';
+        return;
+      }
+
+      resendStatus.textContent = 'Sending...';
+      resendStatus.className = 'muted';
+      btnResend.disabled = true;
+      try {
+        const res = await fetch('api/my_move_submit.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'resend', token: hostToken }),
+        });
+        const json = await res.json();
+        if (!res.ok || json.error || (json.ok === false)) {
+          const errMsg = json.error || json.message || 'Failed.';
+          throw new Error(errMsg);
+        }
+        resendStatus.textContent = json.message || 'Sent.';
+        resendStatus.className = 'ok';
+      } catch (err) {
+        resendStatus.textContent = 'Failed.';
+        resendStatus.className = 'error';
+      } finally {
+        btnResend.disabled = false;
+      }
+    });
+
     fetchState().catch(err => {
       statusMsg.textContent = err.message;
       statusMsg.className = 'error';
+      updateLastUpdated('Failed to load', 'error');
     });
   </script>
 </body>
