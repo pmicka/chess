@@ -32,7 +32,7 @@ header('Content-Type: application/json');
 
 require_once __DIR__ . '/../db.php';
 
-// MVP: accept only POST with JSON payload (no CAPTCHA yet).
+// Accept only POST with JSON payload.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'POST required']);
@@ -48,10 +48,51 @@ if (!is_array($data)) {
 $fen = trim($data['fen'] ?? '');
 $pgn = trim($data['pgn'] ?? '');
 $lastMoveSan = trim($data['last_move_san'] ?? '');
+$turnstileToken = trim($data['turnstile_token'] ?? '');
 
 if ($fen === '' || $pgn === '' || $lastMoveSan === '') {
     http_response_code(400);
     echo json_encode(['error' => 'Missing required fields (fen, pgn, last_move_san).']);
+    exit;
+}
+
+if ($turnstileToken === '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'CAPTCHA verification failed']);
+    exit;
+}
+
+// Verify Turnstile token before attempting any DB changes.
+function verify_turnstile(string $token): bool
+{
+    $postData = http_build_query([
+        'secret' => TURNSTILE_SECRET_KEY,
+        'response' => $token,
+    ]);
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'POST',
+            'header' => "Content-Type: application/x-www-form-urlencoded\r\n",
+            'content' => $postData,
+            'timeout' => 5,
+        ],
+    ]);
+
+    $result = @file_get_contents('https://challenges.cloudflare.com/turnstile/v0/siteverify', false, $context);
+
+    if ($result === false) {
+        return false;
+    }
+
+    $response = json_decode($result, true);
+
+    return is_array($response) && ($response['success'] ?? false) === true;
+}
+
+if (!verify_turnstile($turnstileToken)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'CAPTCHA verification failed']);
     exit;
 }
 
