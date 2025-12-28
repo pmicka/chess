@@ -28,20 +28,6 @@
  * - Email host a link to /my_move.php?token=...
  */
 
-// Parse JSON body if present
-$raw = file_get_contents('php://input');
-$data = json_decode($raw, true);
-
-// Fallback to form POST (just in case)
-if (!is_array($data)) {
-    $data = $_POST;
-}
-
-$token =
-    $data['turnstile_token']
-    ?? $data['cf-turnstile-response']
-    ?? '';
-
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../db.php';
@@ -53,16 +39,47 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$input = file_get_contents('php://input');
-$data = json_decode($input, true);
-if (!is_array($data)) {
-    $data = $_POST; // fallback
+/**
+ * Parse request data from JSON or form-encoded POST.
+ */
+function get_request_data(): ?array
+{
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (stripos($contentType, 'application/json') !== false) {
+        $raw = file_get_contents('php://input');
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    if (!empty($_POST)) {
+        return $_POST;
+    }
+
+    return null;
 }
 
+$data = get_request_data();
+
+if (!is_array($data)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid request body']);
+    exit;
+}
+
+$turnstileToken = trim(
+    $data['turnstile_token']
+    ?? $data['cf-turnstile-response']
+    ?? ''
+);
 $fen = trim($data['fen'] ?? '');
 $pgn = trim($data['pgn'] ?? '');
 $lastMoveSan = trim($data['last_move_san'] ?? '');
-$turnstileToken = trim($data['turnstile_token'] ?? '');
+
+if ($turnstileToken === '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'CAPTCHA token missing']);
+    exit;
+}
 
 if ($fen === '' || $pgn === '' || $lastMoveSan === '') {
     http_response_code(400);
@@ -70,19 +87,19 @@ if ($fen === '' || $pgn === '' || $lastMoveSan === '') {
     exit;
 }
 
-if ($turnstileToken === '') {
-    http_response_code(400);
-    echo json_encode(['error' => 'CAPTCHA verification failed']);
-    exit;
-}
-
 // Verify Turnstile token before attempting any DB changes.
-function verify_turnstile(string $token): bool
+function verify_turnstile(string $token): array
 {
-    $postData = http_build_query([
+    $payload = [
         'secret' => TURNSTILE_SECRET_KEY,
         'response' => $token,
-    ]);
+    ];
+
+    if (!empty($_SERVER['REMOTE_ADDR'])) {
+        $payload['remoteip'] = $_SERVER['REMOTE_ADDR'];
+    }
+
+    $postData = http_build_query($payload);
 
     $context = stream_context_create([
         'http' => [
@@ -96,17 +113,34 @@ function verify_turnstile(string $token): bool
     $result = @file_get_contents('https://challenges.cloudflare.com/turnstile/v0/siteverify', false, $context);
 
     if ($result === false) {
-        return false;
+        return ['success' => false, 'errors' => ['network_error']];
     }
 
     $response = json_decode($result, true);
 
-    return is_array($response) && ($response['success'] ?? false) === true;
+    $success = is_array($response) && ($response['success'] ?? false) === true;
+    $errors = [];
+    if (is_array($response)) {
+        if (isset($response['error-codes']) && is_array($response['error-codes'])) {
+            $errors = $response['error-codes'];
+        } elseif (!$success) {
+            $errors[] = 'unknown_error';
+        }
+    } else {
+        $errors[] = 'invalid_response';
+    }
+
+    return ['success' => $success, 'errors' => $errors];
 }
 
-if (!verify_turnstile($turnstileToken)) {
+$turnstileResult = verify_turnstile($turnstileToken);
+
+if ($turnstileResult['success'] !== true) {
     http_response_code(400);
-    echo json_encode(['error' => 'CAPTCHA verification failed']);
+    echo json_encode([
+        'error' => 'CAPTCHA verification failed',
+        'turnstile_errors' => $turnstileResult['errors'],
+    ]);
     exit;
 }
 
