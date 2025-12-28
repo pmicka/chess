@@ -31,7 +31,7 @@
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../db.php';
-error_log('visitor_move db_path=' . DB_PATH);
+log_db_path_info('visitor_move');
 
 // Accept only POST with JSON payload.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -172,6 +172,7 @@ try {
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$game) {
+        error_log('visitor_move game_found=0');
         $db->rollBack();
         http_response_code(400);
         echo json_encode(['error' => 'No active game found.']);
@@ -191,6 +192,12 @@ try {
         echo json_encode(['error' => 'Server state changed. Refresh and try again.']);
         exit;
     }
+
+    error_log(sprintf(
+        'visitor_move game_found=1 game_id=%d fen_length=%d',
+        (int)$game['id'],
+        isset($game['fen']) ? strlen((string)$game['fen']) : 0
+    ));
 
     // Acquire a lock for this visitor turn. If it already exists, reject.
     // Lock is cleared when the host successfully submits their move (see api/my_move_submit.php).

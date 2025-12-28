@@ -40,6 +40,55 @@ foreach ($requiredConstants as $name) {
 }
 
 /**
+ * Resolve the SQLite path relative to the project root (db.php directory).
+ */
+function resolve_db_path_info(): array
+{
+    $configured = DB_PATH;
+
+    // Anchor relative paths to the project root (this file's directory).
+    $isAbsolute = preg_match('/^(?:\/|[A-Za-z]:[\\\/])/', $configured) === 1;
+    $anchored = $isAbsolute
+        ? $configured
+        : rtrim(__DIR__, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($configured, DIRECTORY_SEPARATOR);
+
+    $dir = dirname($anchored);
+    $dirReal = realpath($dir) ?: $dir;
+    $realFile = realpath($anchored) ?: null;
+    $exists = file_exists($anchored);
+    $size = $exists ? @filesize($anchored) : null;
+
+    return [
+        'configured' => $configured,
+        'anchored' => $anchored,
+        'realpath' => $realFile,
+        'dir_real' => $dirReal,
+        'exists' => $exists,
+        'size' => $size,
+    ];
+}
+
+/**
+ * Log SQLite path diagnostics for visibility across entrypoints.
+ */
+function log_db_path_info(string $context): array
+{
+    $info = resolve_db_path_info();
+    error_log(sprintf(
+        '%s db_path configured=%s anchored=%s real=%s dir=%s exists=%s size=%s',
+        $context,
+        $info['configured'],
+        $info['anchored'],
+        $info['realpath'] ?? 'n/a',
+        $info['dir_real'],
+        $info['exists'] ? '1' : '0',
+        $info['size'] !== null ? (string)$info['size'] : 'n/a'
+    ));
+
+    return $info;
+}
+
+/**
  * Returns a shared PDO connection to the SQLite database.
  */
 function get_db(): PDO
@@ -49,7 +98,10 @@ function get_db(): PDO
         return $pdo;
     }
 
-    $pdo = new PDO('sqlite:' . DB_PATH);
+    $dbInfo = resolve_db_path_info();
+    $dbPath = $dbInfo['realpath'] ?? $dbInfo['anchored'];
+
+    $pdo = new PDO('sqlite:' . $dbPath);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->exec('PRAGMA foreign_keys = ON');
 
