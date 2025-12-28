@@ -45,6 +45,8 @@ require_once __DIR__ . '/config.php';
     .dark  { background: #b58863; }
     .sq.pick { outline: 3px solid #0a84ff; outline-offset: -3px; }
     .sq.hint { box-shadow: inset 0 0 0 4px rgba(10,132,255,.35); }
+    .sq.last { box-shadow: inset 0 0 0 4px rgba(255, 215, 0, 0.9); }
+    #board.locked .sq { pointer-events: none; }
     button { padding: 10px 14px; border-radius: 10px; border: 1px solid #333; background: #111; color: #fff; cursor: pointer; }
     button:disabled { opacity: .4; cursor: not-allowed; }
     code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
@@ -112,6 +114,7 @@ require_once __DIR__ . '/config.php';
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
     const turnstileWidget = document.querySelector('.cf-turnstile');
+    boardEl.classList.add('locked');
 
     window.turnstileToken = null;
     const game = new Chess();
@@ -124,6 +127,7 @@ require_once __DIR__ . '/config.php';
     // selection state
     let selectedSquare = null;
     let pendingMove = null; // {from,to,promotion?}
+    let lastMoveSquares = null; // {from,to}
 
     const pieceToChar = (p) => {
       // Using simple unicode pieces. p: {type, color} from chess.js board()
@@ -176,6 +180,7 @@ require_once __DIR__ . '/config.php';
       squares.forEach(el => {
         el.classList.remove('pick');
         el.classList.remove('hint');
+        el.classList.remove('last');
       });
 
       if (selectedSquare) {
@@ -189,6 +194,13 @@ require_once __DIR__ . '/config.php';
           if (hint) hint.classList.add('hint');
         });
       }
+
+      if (lastMoveSquares) {
+        ['from', 'to'].forEach(key => {
+          const target = boardEl.querySelector(`.sq[data-square="${lastMoveSquares[key]}"]`);
+          if (target) target.classList.add('last');
+        });
+      }
     }
 
     function isVisitorsTurn() {
@@ -197,11 +209,9 @@ require_once __DIR__ . '/config.php';
     }
 
     function onSquareClick(sq) {
-      statusMsg.textContent = '';
       if (!state) return;
 
       if (!isVisitorsTurn()) {
-        statusMsg.textContent = 'Not your turn. Refresh to see if the host has moved.';
         return;
       }
 
@@ -238,6 +248,7 @@ require_once __DIR__ . '/config.php';
       }
 
       pendingMove = { from: move.from, to: move.to, promotion: move.promotion || 'q', san: move.san };
+      lastMoveSquares = { from: move.from, to: move.to };
       movePreview.textContent = `${move.san} (${move.from}→${move.to})`;
       btnSubmit.disabled = false;
       selectedSquare = null;
@@ -271,6 +282,52 @@ require_once __DIR__ . '/config.php';
       window.turnstileToken = null;
     }
 
+    function formatTimestamp(ts) {
+      const d = new Date(ts);
+      if (Number.isNaN(d.getTime())) return ts || '';
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+
+    function updateStatusMessage() {
+      if (!state) return;
+
+      if (state.status !== 'active') {
+        statusMsg.textContent = `Game is ${state.status || 'inactive'}.`;
+        statusMsg.className = 'muted';
+        boardEl.classList.add('locked');
+        return;
+      }
+
+      if (isVisitorsTurn()) {
+        statusMsg.textContent = `Your turn (${visitorColor}). Solve CAPTCHA to submit.`;
+        statusMsg.className = 'ok';
+        boardEl.classList.remove('locked');
+      } else {
+        statusMsg.textContent = `Waiting on host move (${hostColor}). Last updated: ${formatTimestamp(state.updated_at)}`;
+        statusMsg.className = 'muted';
+        boardEl.classList.add('locked');
+      }
+    }
+
+    function deriveLastMoveSquares(currentState) {
+      if (!currentState) return null;
+      if (currentState.last_move_from && currentState.last_move_to) {
+        return { from: currentState.last_move_from, to: currentState.last_move_to };
+      }
+      if (!currentState.pgn) return null;
+      try {
+        const replay = new Chess();
+        replay.load_pgn(currentState.pgn);
+        const hist = replay.history({ verbose: true });
+        if (!hist.length) return null;
+        const last = hist[hist.length - 1];
+        return { from: last.from, to: last.to };
+      } catch (err) {
+        return null;
+      }
+    }
+
     async function fetchState() {
       statusMsg.textContent = 'Loading…';
       clearSelection();
@@ -293,12 +350,12 @@ require_once __DIR__ . '/config.php';
       pgnBox.value = state.pgn;
 
       game.load(state.fen);
+      lastMoveSquares = deriveLastMoveSquares(state);
 
       debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
       renderBoard();
 
-      statusMsg.textContent = isVisitorsTurn() ? 'Your turn.' : 'Waiting on host.';
-      statusMsg.className = isVisitorsTurn() ? 'ok' : 'muted';
+      updateStatusMessage();
 
       // Disable submit unless a move is pending
       btnSubmit.disabled = true;
@@ -307,6 +364,7 @@ require_once __DIR__ . '/config.php';
     function handleStateError(err) {
       statusMsg.textContent = err.message || 'Failed to load state';
       statusMsg.className = 'error';
+      boardEl.classList.add('locked');
     }
 
     // Load state on first render so visitors see the board immediately.
@@ -314,47 +372,50 @@ require_once __DIR__ . '/config.php';
 
     btnRefresh.addEventListener('click', () => fetchState().catch(handleStateError));
 
-btnSubmit.addEventListener('click', async () => {
-  if (!pendingMove || !state) return;
-  if (!ensureTokenPresent()) return;
+    btnSubmit.addEventListener('click', async () => {
+      if (!pendingMove || !state) return;
+      if (!ensureTokenPresent()) return;
 
-  btnSubmit.disabled = true;
-  statusMsg.textContent = 'Submitting...';
+      btnSubmit.disabled = true;
+      statusMsg.textContent = 'Submitting...';
 
-  try {
-    const res = await fetch('api/visitor_move.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        fen: game.fen(),
-        pgn: game.pgn(),
-      last_move_san: pendingMove.san,
-      turnstile_token: window.turnstileToken
-    })
-  });
+      try {
+        const res = await fetch('api/visitor_move.php', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            fen: game.fen(),
+            pgn: game.pgn(),
+            last_move_san: pendingMove.san,
+            last_move_from: pendingMove.from,
+            last_move_to: pendingMove.to,
+            turnstile_token: window.turnstileToken
+          })
+        });
 
-    const json = await res.json();
+        const json = await res.json();
 
-    if (!res.ok || json.error) {
-      throw new Error(json.error || 'Move rejected');
-    }
+        if (!res.ok || json.error) {
+          throw new Error(json.error || 'Move rejected');
+        }
 
-    statusMsg.textContent = 'Move accepted. Waiting on host.';
-    pendingMove = null;
-    resetTurnstile();
+        statusMsg.textContent = 'Move accepted. Waiting on host.';
+        statusMsg.className = 'muted';
+        pendingMove = null;
+        resetTurnstile();
 
-    // Refresh canonical state from server
-    await fetchState();
+        // Refresh canonical state from server
+        await fetchState();
 
-  } catch (err) {
-    statusMsg.textContent = err.message;
-    statusMsg.className = 'error';
-    resetTurnstile();
-    btnSubmit.disabled = false;
-  }
-});
+      } catch (err) {
+        statusMsg.textContent = err.message;
+        statusMsg.className = 'error';
+        resetTurnstile();
+        btnSubmit.disabled = false;
+      }
+    });
 
   </script>
 </body>
