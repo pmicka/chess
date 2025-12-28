@@ -188,3 +188,121 @@ function fetch_valid_host_token(PDO $db, string $tokenValue): ?array
 
     return $row;
 }
+
+/**
+ * Return a valid (unused, unexpired) host token for the given game, if one exists.
+ */
+function fetch_valid_host_token_for_game(PDO $db, int $gameId): ?array
+{
+    $stmt = $db->prepare("
+        SELECT *
+        FROM tokens
+        WHERE game_id = :game_id
+          AND purpose = 'your_move'
+          AND used = 0
+        ORDER BY created_at DESC
+        LIMIT 1
+    ");
+    $stmt->execute([':game_id' => $gameId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$row) {
+        return null;
+    }
+
+    $expiry = token_expiry_from_row($db, $row);
+    if ($expiry !== null && datetime_utc() >= $expiry) {
+        return null;
+    }
+
+    if (!empty($row['used_at'])) {
+        return null;
+    }
+
+    $row['expires_at_dt'] = $expiry;
+
+    return $row;
+}
+
+/**
+ * Ensure there is a valid host token for the given game.
+ * Returns an array with the token value and its expiry (if available).
+ */
+function ensure_host_move_token(PDO $db, int $gameId, ?DateTimeImmutable $expiresAt = null): array
+{
+    $existing = fetch_valid_host_token_for_game($db, $gameId);
+    if ($existing && !empty($existing['token'])) {
+        return [
+            'token' => $existing['token'],
+            'expires_at' => $existing['expires_at_dt'] ?? null,
+        ];
+    }
+
+    $expiry = $expiresAt ?? default_host_token_expiry();
+    $token = insert_host_move_token($db, $gameId, $expiry);
+
+    return [
+        'token' => $token,
+        'expires_at' => $expiry,
+    ];
+}
+
+/**
+ * Return the canonical starting position FEN.
+ */
+function starting_fen(): string
+{
+    return 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+}
+
+/**
+ * Extract the fullmove number from a FEN string, defaulting to 1.
+ */
+function fullmove_number_from_fen(string $fen): int
+{
+    $parts = preg_split('/\\s+/', trim($fen));
+    if (isset($parts[5]) && is_numeric($parts[5])) {
+        $num = (int)$parts[5];
+        return ($num > 0) ? $num : 1;
+    }
+    return 1;
+}
+
+/**
+ * Append a SAN move to an existing PGN string.
+ *
+ * This is a lightweight formatter meant to preserve accumulated PGN history
+ * without relying on client-provided PGN (which may be truncated).
+ */
+function append_pgn_move(string $currentPgn, string $movingColor, string $moveSan, string $fenAfterMove): string
+{
+    $trimmed = trim($currentPgn);
+    $moveSan = trim($moveSan);
+    if ($moveSan === '') {
+        return $trimmed;
+    }
+
+    $moveNumber = fullmove_number_from_fen($fenAfterMove);
+    $color = strtolower($movingColor) === 'white' ? 'white' : 'black';
+
+    if ($color === 'white') {
+        $segment = "{$moveNumber}. {$moveSan}";
+    } else {
+        $lastNumber = null;
+        if ($trimmed !== '' && preg_match_all('/(\\d+)\\./', $trimmed, $matches) && !empty($matches[1])) {
+            $lastNumber = (int)end($matches[1]);
+        }
+
+        if ($lastNumber === $moveNumber) {
+            $segment = $moveSan;
+        } else {
+            $segment = "{$moveNumber}... {$moveSan}";
+        }
+    }
+
+    if ($trimmed === '') {
+        return $segment;
+    }
+
+    return $trimmed . ' ' . $segment;
+}

@@ -38,6 +38,29 @@ if ($tokenRow) {
 }
 
 if (!$tokenRow) {
+    $latestGameStmt = $db->query("
+        SELECT id, host_color, turn_color, status
+        FROM games
+        WHERE status = 'active'
+        ORDER BY updated_at DESC
+        LIMIT 1
+    ");
+    $latestGame = $latestGameStmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($latestGame && ($latestGame['status'] ?? '') === 'active' && $latestGame['turn_color'] === $latestGame['host_color']) {
+        $freshTokenInfo = ensure_host_move_token($db, (int)$latestGame['id']);
+        if (!empty($freshTokenInfo['token']) && $freshTokenInfo['token'] !== $tokenValue) {
+            $params = [
+                'token' => $freshTokenInfo['token'],
+                'fresh' => '1',
+            ];
+            header('Location: ' . BASE_URL . '/my_move.php?' . http_build_query($params));
+            exit;
+        }
+    }
+}
+
+if (!$tokenRow) {
     ?>
 <!doctype html>
 <html lang="en">
@@ -97,6 +120,9 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 <body>
   <div class="wrap">
     <h1>Host Move</h1>
+    <?php if (isset($_GET['fresh']) && $_GET['fresh'] === '1'): ?>
+      <p class="ok">Issued a fresh link for your current turn.</p>
+    <?php endif; ?>
     <p class="muted">
       You play <strong id="hostColorLabel">white</strong>. Visitors play <strong id="visitorColorLabel">black</strong>.
       Turn: <strong id="turnLabel">...</strong>.
@@ -338,7 +364,20 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       fenBox.value = state.fen;
       pgnBox.value = state.pgn;
 
-      game.load(state.fen);
+      game.reset();
+      let loadedFromPgn = false;
+      if (state.pgn) {
+        try {
+          game.load_pgn(state.pgn);
+          loadedFromPgn = true;
+        } catch (err) {
+          loadedFromPgn = false;
+        }
+      }
+
+      if (!loadedFromPgn) {
+        game.load(state.fen);
+      }
 
       debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
       renderBoard();

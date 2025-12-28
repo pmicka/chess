@@ -74,7 +74,7 @@ try {
     }
 
     $stmt = $db->prepare("
-        SELECT id, host_color, visitor_color, turn_color, status
+        SELECT id, host_color, visitor_color, turn_color, status, pgn
         FROM games
         WHERE id = :id
         LIMIT 1
@@ -103,6 +103,8 @@ try {
         exit;
     }
 
+    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['host_color'], $move, $fen);
+
     // Flip turn to visitors after saving the host move.
     $nextTurn = $game['host_color'] === 'white' ? 'black' : 'white';
 
@@ -118,7 +120,7 @@ try {
 
     $update->execute([
         ':fen' => $fen,
-        ':pgn' => $pgn,
+        ':pgn' => $newPgn,
         ':move' => $move,
         ':id' => $game['id'],
     ]);

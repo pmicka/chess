@@ -153,7 +153,7 @@ try {
 
     // Load the latest active game.
     $stmt = $db->query("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, pgn
         FROM games
         WHERE status = 'active'
         ORDER BY updated_at DESC
@@ -197,6 +197,8 @@ try {
         exit;
     }
 
+    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['turn_color'], $lastMoveSan, $fen);
+
     // Save visitor move and flip turn back to host (you_color).
     $update = $db->prepare("
         UPDATE games
@@ -210,13 +212,14 @@ try {
 
     $update->execute([
         ':fen' => $fen,
-        ':pgn' => $pgn,
+        ':pgn' => $newPgn,
         ':last_move_san' => $lastMoveSan,
         ':id' => $game['id'],
     ]);
 
-    $expiresAt = default_host_token_expiry();
-    $hostToken = insert_host_move_token($db, (int)$game['id'], $expiresAt);
+    $tokenInfo = ensure_host_move_token($db, (int)$game['id']);
+    $hostToken = $tokenInfo['token'];
+    $expiresAt = $tokenInfo['expires_at'];
 
     // Fetch the updated state for the response.
     $stateStmt = $db->prepare("
@@ -238,7 +241,7 @@ try {
     $body = "Game ID: {$updatedGame['id']}\n"
         . "Last visitor move: {$lastMoveSan}\n"
         . "Link: {$link}\n"
-        . "Token expires at: " . $expiresAt->format('Y-m-d H:i:s T') . "\n";
+        . "Token expires at: " . ($expiresAt instanceof DateTimeInterface ? $expiresAt->format('Y-m-d H:i:s T') : 'n/a') . "\n";
 
     $emailHeaders = 'From: ' . MAIL_FROM . "\r\n";
 
