@@ -54,6 +54,9 @@ require_once __DIR__ . '/config.php';
     }
     h1 { margin: 0 0 8px; }
     .subhead { margin: 0 0 14px; color: #555; }
+    .project-intro h2 { margin: 0 0 8px; }
+    .project-intro p { margin: 0 0 10px; line-height: 1.6; }
+    .project-intro p:last-child { margin-bottom: 0; }
     .card {
       background: #fff;
       border: 1px solid var(--border);
@@ -131,6 +134,16 @@ require_once __DIR__ . '/config.php';
       Visitors play <strong id="visitorColorLabel">black</strong>. Host plays <strong id="hostColorLabel">white</strong>.
       Turn: <strong id="turnLabel">…</strong>.
     </p>
+
+    <div class="card project-intro">
+      <section aria-labelledby="projectIntroHeading">
+        <h2 id="projectIntroHeading">About This Project</h2>
+        <p>This is a small experiment in building things by doing them.</p>
+        <p>At its core, it’s an asynchronous chess simul: one board, one game, me versus anyone who wanders in. Visitors play Black, I play White, and moves unfold slowly over time. No matchmaking, no ratings, no timers—just a shared game and a bit of patience.</p>
+        <p>Under the hood, it’s also a learning playground. This project exists to explore how modern tools fit together in the real world: PHP and SQLite on the backend, open-source chess libraries for rules and validation, GitHub for version control, and a growing amount of help from ChatGPT along the way. Wherever possible, it leans on permissive, open licenses—Creative Commons and MIT—because learning works best when ideas can be shared, borrowed, and improved.</p>
+        <p>It’s intentionally simple, occasionally imperfect, and very much a work in pro</p>
+      </section>
+    </div>
 
     <div class="card">
       <div class="board-container">
