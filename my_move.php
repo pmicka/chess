@@ -69,24 +69,9 @@ if (!$tokenRow) {
     }
 }
 
-if (!$tokenRow) {
-    ?>
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Host Move - Invalid Link</title>
-</head>
-<body>
-  <p>Invalid or expired link.</p>
-</body>
-</html>
-<?php
-    exit;
-}
+$tokenIsValid = (bool)$tokenRow;
 
-$tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
+$tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     ? $tokenRow['expires_at_dt']->format('Y-m-d H:i:s T')
     : null;
 
@@ -181,6 +166,28 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       opacity: 0.6;
       filter: grayscale(1);
     }
+    .hidden { display: none !important; }
+    .state-card {
+      display: none;
+      margin-top: 12px;
+    }
+    .button-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #111;
+      background: #111;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      text-decoration: none;
+    }
+    .button-link.secondary {
+      background: #fff;
+      color: #111;
+    }
   </style>
 </head>
 <body>
@@ -198,56 +205,78 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     <p class="muted">This link expires at <strong><?php echo htmlspecialchars($tokenExpiresDisplay, ENT_QUOTES, 'UTF-8'); ?></strong>.</p>
     <?php endif; ?>
 
-    <div class="card">
-      <div class="board-container">
-        <div class="board-shell">
-          <div id="board" aria-label="Chess board"></div>
-        </div>
-      </div>
+    <div id="completionCard" class="card state-card" style="display:none;">
+      <h2>Move submitted</h2>
+      <p>Your move has been recorded.<br>This link is single-use, so you’re all done here.<br>You’ll be redirected back to the game shortly.</p>
+      <p id="redirectNote" class="muted">Redirecting in <span id="redirectCountdown">5</span> seconds…</p>
       <div class="controls">
-        <button id="btnRefresh">Refresh</button>
-        <button id="btnSubmit" disabled>Submit move</button>
-      </div>
-      <div class="status-line" aria-live="polite">
-        <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
-        <span id="statusMsg" class="muted"></span>
-        <span id="lastUpdated" class="muted">Last updated: ...</span>
-      </div>
-      <p class="muted selected-move">
-        Selected move: <code id="movePreview">none</code>
-      </p>
-      <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
-        <div class="label">Promote to:</div>
-        <div class="promotion-buttons">
-          <button type="button" class="promo-btn active" data-piece="q">Queen</button>
-          <button type="button" class="promo-btn" data-piece="r">Rook</button>
-          <button type="button" class="promo-btn" data-piece="b">Bishop</button>
-          <button type="button" class="promo-btn" data-piece="n">Knight</button>
-        </div>
-      </div>
-      <div class="extra-actions">
-        <button id="btnCopyLink" type="button">Copy this link</button>
-        <button id="btnResend" type="button">Resend link to my email</button>
-        <span id="copyStatus" class="muted"></span>
-        <span id="resendStatus" class="muted"></span>
+        <a class="button-link" href="index.php">Return to game now</a>
+        <button id="cancelRedirect" type="button">Cancel redirect</button>
       </div>
     </div>
 
-    <div class="card">
-      <h3>Game State</h3>
-      <p class="muted">FEN:</p>
-      <textarea id="fenBox" readonly></textarea>
-      <div class="copy-row">
-        <button id="copyFenBtn">Copy FEN</button>
-        <span id="copyFenMsg" class="copy-note" aria-live="polite"></span>
+    <div id="expiredCard" class="card state-card" style="<?php echo $tokenIsValid ? 'display:none;' : 'display:block;'; ?>">
+      <h2>This host link has expired</h2>
+      <p>Host links are single-use. Once a move is made, the link can’t be reused.</p>
+      <div class="controls">
+        <button id="btnResendExpired" type="button">Resend link to my email</button>
+        <a class="button-link secondary" href="index.php">Return to game</a>
+        <span id="resendStatusExpired" class="muted"></span>
       </div>
-      <p class="muted">PGN:</p>
-      <textarea id="pgnBox" readonly></textarea>
-      <div class="copy-row">
-        <button id="copyPgnBtn">Copy PGN</button>
-        <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
+    </div>
+
+    <div id="mainContent" style="<?php echo $tokenIsValid ? '' : 'display:none;'; ?>">
+      <div class="card">
+        <div class="board-container">
+          <div class="board-shell">
+            <div id="board" aria-label="Chess board"></div>
+          </div>
+        </div>
+        <div class="controls">
+          <button id="btnRefresh">Refresh</button>
+          <button id="btnSubmit" disabled>Submit move</button>
+        </div>
+        <div class="status-line" aria-live="polite">
+          <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+          <span id="statusMsg" class="muted"></span>
+          <span id="lastUpdated" class="muted">Last updated: ...</span>
+        </div>
+        <p class="muted selected-move">
+          Selected move: <code id="movePreview">none</code>
+        </p>
+        <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
+          <div class="label">Promote to:</div>
+          <div class="promotion-buttons">
+            <button type="button" class="promo-btn active" data-piece="q">Queen</button>
+            <button type="button" class="promo-btn" data-piece="r">Rook</button>
+            <button type="button" class="promo-btn" data-piece="b">Bishop</button>
+            <button type="button" class="promo-btn" data-piece="n">Knight</button>
+          </div>
+        </div>
+        <div class="extra-actions">
+          <button id="btnCopyLink" type="button">Copy this link</button>
+          <button id="btnResend" type="button">Resend link to my email</button>
+          <span id="copyStatus" class="muted"></span>
+          <span id="resendStatus" class="muted"></span>
+        </div>
       </div>
-      <p class="muted mono" id="debugBox"></p>
+
+      <div class="card">
+        <h3>Game State</h3>
+        <p class="muted">FEN:</p>
+        <textarea id="fenBox" readonly></textarea>
+        <div class="copy-row">
+          <button id="copyFenBtn">Copy FEN</button>
+          <span id="copyFenMsg" class="copy-note" aria-live="polite"></span>
+        </div>
+        <p class="muted">PGN:</p>
+        <textarea id="pgnBox" readonly></textarea>
+        <div class="copy-row">
+          <button id="copyPgnBtn">Copy PGN</button>
+          <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
+        </div>
+        <p class="muted mono" id="debugBox"></p>
+      </div>
     </div>
   </div>
 
@@ -255,9 +284,18 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
   <script src="assets/chess.min.js"></script>
   <script>
     window.hostToken = <?php echo json_encode($tokenValue); ?>;
+    window.initialTokenValid = <?php echo $tokenIsValid ? 'true' : 'false'; ?>;
   </script>
   <script>
     const boardEl = document.getElementById('board');
+    const mainContent = document.getElementById('mainContent');
+    const completionCard = document.getElementById('completionCard');
+    const expiredCard = document.getElementById('expiredCard');
+    const redirectCountdownEl = document.getElementById('redirectCountdown');
+    const redirectNote = document.getElementById('redirectNote');
+    const cancelRedirectBtn = document.getElementById('cancelRedirect');
+    const btnResendExpired = document.getElementById('btnResendExpired');
+    const resendStatusExpired = document.getElementById('resendStatusExpired');
     const btnRefresh = document.getElementById('btnRefresh');
     const btnSubmit = document.getElementById('btnSubmit');
     const btnCopyLink = document.getElementById('btnCopyLink');
@@ -287,6 +325,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       if (fromQuery) return fromQuery;
       return (window.hostToken || '').trim();
     })();
+    const initialTokenValid = Boolean(window.initialTokenValid);
 
     const DEBUG = false;
 
@@ -304,6 +343,8 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     let lastUpdatedTs = null;
     let stateLoadPromise = null;
     let promotionChoice = 'q';
+    let redirectTimer = null;
+    let redirectInterval = null;
 
     function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
       statusMsg.textContent = message;
@@ -623,6 +664,82 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       btnSubmit.disabled = !enabled || btnSubmit.disabled;
     }
 
+    function setInteractionEnabled(enabled) {
+      setBoardInteractive(enabled);
+      [btnRefresh, btnCopyLink, btnResend, copyFenBtn, copyPgnBtn].forEach((btn) => {
+        if (btn) btn.disabled = !enabled;
+      });
+      if (btnSubmit && !enabled) {
+        btnSubmit.disabled = true;
+      }
+    }
+
+    function hideStateCards() {
+      [completionCard, expiredCard].forEach((card) => {
+        if (card) card.style.display = 'none';
+      });
+    }
+
+    function showMainContent() {
+      hideStateCards();
+      if (mainContent) mainContent.style.display = '';
+    }
+
+    function showStateCard(cardEl) {
+      hideStateCards();
+      if (mainContent) mainContent.style.display = 'none';
+      if (cardEl) cardEl.style.display = 'block';
+    }
+
+    function clearRedirectTimers() {
+      if (redirectTimer) {
+        clearTimeout(redirectTimer);
+        redirectTimer = null;
+      }
+      if (redirectInterval) {
+        clearInterval(redirectInterval);
+        redirectInterval = null;
+      }
+    }
+
+    function startRedirectCountdown(seconds = 5) {
+      clearRedirectTimers();
+      let remaining = seconds;
+      if (redirectCountdownEl) redirectCountdownEl.textContent = remaining;
+      redirectInterval = setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          clearRedirectTimers();
+          window.location.href = 'index.php';
+          return;
+        }
+        if (redirectCountdownEl) redirectCountdownEl.textContent = remaining;
+      }, 1000);
+      redirectTimer = setTimeout(() => {
+        clearRedirectTimers();
+        window.location.href = 'index.php';
+      }, seconds * 1000);
+    }
+
+    function enterCompletionState(message) {
+      setInteractionEnabled(false);
+      clearSelection();
+      hideStateCards();
+      showStateCard(completionCard);
+      setStatus(message || 'Move submitted. Redirecting soon…', 'ok');
+      if (statusSpinner) statusSpinner.classList.remove('show');
+      startRedirectCountdown(5);
+    }
+
+    function enterExpiredLinkState(reason) {
+      setInteractionEnabled(false);
+      clearSelection();
+      updateLastUpdated('Unavailable', 'error');
+      setStatus(reason || 'Host link invalid or expired. Please resend link.', 'error');
+      showStateCard(expiredCard);
+      if (statusSpinner) statusSpinner.classList.remove('show');
+    }
+
     function buildStateUrl() {
       const params = new URLSearchParams();
       if (hostToken) params.set('token', hostToken);
@@ -636,11 +753,12 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
 
       stateLoadPromise = (async () => {
+        showMainContent();
         setStatus('Loading…', 'muted', { showSpinner: true });
         clearSelection();
         clearErrorBanner();
         updateLastUpdated('Updating...', 'muted');
-        setBoardInteractive(false);
+        setInteractionEnabled(false);
         btnRefresh.disabled = true;
 
         try {
@@ -715,7 +833,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           btnSubmit.disabled = true;
           clearErrorBanner();
           if (statusSpinner) statusSpinner.classList.remove('show');
-          setBoardInteractive(true);
+          setInteractionEnabled(true);
         } catch (err) {
           state = null;
           const isAuthError = [401, 403, 410].includes(err.status);
@@ -725,7 +843,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           setStatus(friendlyMessage, 'error');
           updateLastUpdated('Failed to load state', 'error');
           showErrorBanner(`Failed to load game state: ${friendlyMessage}`);
-          setBoardInteractive(false);
+          setInteractionEnabled(false);
           // Do not fall back to the starting position on error.
           try {
             if (typeof game.clear === 'function') {
@@ -734,11 +852,14 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           } catch (e) {
             // noop
           }
-          renderBoard();
-          fenBox.value = '';
-          pgnBox.value = '';
-          movePreview.textContent = 'none';
-          throw err;
+          if (!isAuthError) {
+            renderBoard();
+            fenBox.value = '';
+            pgnBox.value = '';
+            movePreview.textContent = 'none';
+            throw err;
+          }
+          enterExpiredLinkState(friendlyMessage);
         } finally {
           btnRefresh.disabled = false;
           stateLoadPromise = null;
@@ -792,13 +913,14 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           throw new Error(json.error || 'Move rejected');
         }
 
-        setStatus(json.message || 'Move accepted. Visitors may move now.', 'ok');
+        const successMessage = json.message || 'Move accepted. Visitors may move now.';
         pendingBaseFen = null;
         resetPromotionChooser();
-        await fetchState();
+        enterCompletionState(successMessage);
       } catch (err) {
         setStatus(err.message || 'Move rejected', 'error');
         btnSubmit.disabled = false;
+        setInteractionEnabled(true);
       }
     });
 
@@ -820,16 +942,17 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
     });
 
-    btnResend.addEventListener('click', async () => {
+    async function resendLink(buttonEl, statusEl) {
+      if (!buttonEl || !statusEl) return;
       if (!hostToken) {
-        resendStatus.textContent = 'Missing token. Use your email link.';
-        resendStatus.className = 'error';
+        statusEl.textContent = 'Missing token. Use your email link.';
+        statusEl.className = 'error';
         return;
       }
 
-      resendStatus.textContent = 'Sending...';
-      resendStatus.className = 'muted';
-      btnResend.disabled = true;
+      statusEl.textContent = 'Sending...';
+      statusEl.className = 'muted';
+      buttonEl.disabled = true;
       try {
         const res = await fetch('api/my_move_submit.php', {
           method: 'POST',
@@ -841,15 +964,20 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           const errMsg = json.error || json.message || 'Failed.';
           throw new Error(errMsg);
         }
-        resendStatus.textContent = json.message || 'Sent.';
-        resendStatus.className = 'ok';
+        statusEl.textContent = json.message || 'Sent.';
+        statusEl.className = 'ok';
       } catch (err) {
-        resendStatus.textContent = 'Failed.';
-        resendStatus.className = 'error';
+        statusEl.textContent = 'Failed.';
+        statusEl.className = 'error';
       } finally {
-        btnResend.disabled = false;
+        buttonEl.disabled = false;
       }
-    });
+    }
+
+    btnResend.addEventListener('click', () => resendLink(btnResend, resendStatus));
+    if (btnResendExpired && resendStatusExpired) {
+      btnResendExpired.addEventListener('click', () => resendLink(btnResendExpired, resendStatusExpired));
+    }
 
     function clearCopyNotes() {
       copyFenMsg.textContent = '';
@@ -881,11 +1009,25 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     copyFenBtn.addEventListener('click', () => copyText(fenBox.value, copyFenMsg));
     copyPgnBtn.addEventListener('click', () => copyText(pgnBox.value, copyPgnMsg));
 
-    fetchState().catch(err => {
-      const message = err && err.message ? err.message : 'Failed to load';
-      setStatus(message, 'error');
-      updateLastUpdated('Failed to load', 'error');
-    });
+    if (cancelRedirectBtn) {
+      cancelRedirectBtn.addEventListener('click', () => {
+        clearRedirectTimers();
+        cancelRedirectBtn.disabled = true;
+        if (redirectNote) {
+          redirectNote.textContent = 'Redirect canceled. Use the button below to return to the game.';
+        }
+      });
+    }
+
+    if (initialTokenValid) {
+      fetchState().catch(err => {
+        const message = err && err.message ? err.message : 'Failed to load';
+        setStatus(message, 'error');
+        updateLastUpdated('Failed to load', 'error');
+      });
+    } else {
+      enterExpiredLinkState('This host link has expired.');
+    }
   </script>
 </body>
 </html>
