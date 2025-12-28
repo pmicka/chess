@@ -135,6 +135,9 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 
   <script src="assets/chess.min.js"></script>
   <script>
+    window.hostToken = <?php echo json_encode($tokenValue); ?>;
+  </script>
+  <script>
     const boardEl = document.getElementById('board');
     const btnRefresh = document.getElementById('btnRefresh');
     const btnSubmit = document.getElementById('btnSubmit');
@@ -146,7 +149,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
-    const hostToken = <?php echo json_encode($tokenValue, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT); ?>;
+    const hostToken = window.hostToken || '';
 
     const game = new Chess();
     let state = null;
@@ -351,6 +354,11 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     }));
 
     btnSubmit.addEventListener('click', async () => {
+      if (!hostToken) {
+        statusMsg.textContent = 'Missing token. Please use the link from your email.';
+        statusMsg.className = 'error';
+        return;
+      }
       if (!pendingMove || !state) return;
       btnSubmit.disabled = true;
       statusMsg.textContent = 'Submitting...';

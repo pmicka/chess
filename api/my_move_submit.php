@@ -39,17 +39,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
 if (!is_array($data)) {
-    $data = $_POST; // fallback for form-encoded requests
+    $data = [];
 }
 
-$tokenValue = trim($data['token'] ?? ($_GET['token'] ?? ''));
+$tokenValue = trim($data['token'] ?? '');
 $fen = trim($data['fen'] ?? '');
 $pgn = trim($data['pgn'] ?? '');
 $move = trim($data['move'] ?? '');
 
 if ($tokenValue === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing token.']);
+    echo json_encode(['error' => 'Token missing']);
     exit;
 }
 
@@ -68,8 +68,8 @@ try {
     $tokenRow = fetch_valid_host_token($db, $tokenValue);
     if (!$tokenRow) {
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid or expired token.']);
+        http_response_code(401);
+        echo json_encode(['error' => 'Invalid or expired token']);
         exit;
     }
 
