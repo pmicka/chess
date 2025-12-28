@@ -1,1 +1,20 @@
+# .gitignore
+# Intent: Keep secrets and runtime data out of GitHub.
+# - config.php contains secret keys and environment settings
+# - data/ contains runtime state (SQLite) and must never be committed
 
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets (server-only)
+config.php
+
+# Runtime data (server-only)
+data/*
+!data/.gitkeep
+
+# Logs
+*.log
