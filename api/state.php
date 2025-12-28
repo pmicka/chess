@@ -26,13 +26,38 @@ require_once __DIR__ . '/../db.php';
 
 try {
     $db = get_db();
-    $stmt = $db->query("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
-        FROM games
-        ORDER BY updated_at DESC
-        LIMIT 1
-    ");
-    $game = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $tokenValue = isset($_GET['token']) ? trim($_GET['token']) : '';
+    $tokenGameId = null;
+
+    if ($tokenValue !== '') {
+        $tokenRow = fetch_valid_host_token($db, $tokenValue);
+        if (!$tokenRow) {
+            http_response_code(401);
+            echo json_encode(['error' => 'Invalid or expired token.']);
+            exit;
+        }
+        $tokenGameId = (int)$tokenRow['game_id'];
+    }
+
+    if ($tokenGameId !== null) {
+        $stmt = $db->prepare("
+            SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
+            FROM games
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $tokenGameId]);
+        $game = $stmt->fetch(PDO::FETCH_ASSOC);
+    } else {
+        $stmt = $db->query("
+            SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
+            FROM games
+            ORDER BY updated_at DESC
+            LIMIT 1
+        ");
+        $game = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
 
     if (!$game) {
         echo json_encode(['error' => 'No game found. Run init_db.php.']);
