@@ -269,7 +269,7 @@ function fullmove_number_from_fen(string $fen): int
 }
 
 /**
- * Remove PGN header lines (e.g., [FEN "..."]) and surrounding blank lines.
+ * Remove leading PGN header lines (e.g., [FEN "..."]) and blank lines.
  */
 function strip_pgn_headers(string $pgn): string
 {
@@ -278,48 +278,18 @@ function strip_pgn_headers(string $pgn): string
         return trim($pgn);
     }
 
-    $filtered = [];
-    foreach ($lines as $line) {
-        if (preg_match('/^\\s*\\[.*\\]\\s*$/', $line) === 1) {
+    while (!empty($lines)) {
+        $line = $lines[0];
+        $isHeader = preg_match('/^\\s*\\[.*\\]\\s*$/', $line) === 1;
+        $isBlank = trim($line) === '';
+        if ($isHeader || $isBlank) {
+            array_shift($lines);
             continue;
         }
-        $filtered[] = $line;
+        break;
     }
 
-    while (!empty($filtered) && trim($filtered[0]) === '') {
-        array_shift($filtered);
-    }
-
-    while (!empty($filtered) && trim(end($filtered)) === '') {
-        array_pop($filtered);
-    }
-
-    return implode("\n", $filtered);
-}
-
-/**
- * Normalize PGN move text into a single-line, header-free string.
- */
-function normalize_moves_only_pgn(string $pgn): string
-{
-    $noHeaders = strip_pgn_headers($pgn);
-
-    $flattened = preg_replace('/\\s+/', ' ', $noHeaders);
-    if ($flattened === null) {
-        $flattened = $noHeaders;
-    }
-
-    $fixedEllipses = preg_replace('/\\s*\\.\\.\\.\\s*/', '... ', $flattened);
-    if ($fixedEllipses === null) {
-        $fixedEllipses = $flattened;
-    }
-
-    $singleSpaced = preg_replace('/\\s+/', ' ', $fixedEllipses);
-    if ($singleSpaced === null) {
-        $singleSpaced = $fixedEllipses;
-    }
-
-    return trim($singleSpaced);
+    return trim(implode("\n", $lines));
 }
 
 /**
@@ -330,7 +300,7 @@ function normalize_moves_only_pgn(string $pgn): string
  */
 function append_pgn_move(string $currentPgn, string $movingColor, string $moveSan, string $fenAfterMove): string
 {
-    $trimmed = normalize_moves_only_pgn($currentPgn);
+    $trimmed = trim(strip_pgn_headers($currentPgn));
     $moveSan = trim($moveSan);
     if ($moveSan === '') {
         return $trimmed;
@@ -355,10 +325,10 @@ function append_pgn_move(string $currentPgn, string $movingColor, string $moveSa
     }
 
     if ($trimmed === '') {
-        return normalize_moves_only_pgn($segment);
+        return $segment;
     }
 
-    return normalize_moves_only_pgn($trimmed . ' ' . $segment);
+    return $trimmed . ' ' . $segment;
 }
 
 /**
