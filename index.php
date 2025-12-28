@@ -268,20 +268,44 @@
       statusMsg.className = 'error';
     }));
 
-    btnSubmit.addEventListener('click', async () => {
-      if (!pendingMove || !state) return;
+btnSubmit.addEventListener('click', async () => {
+  if (!pendingMove || !state) return;
 
-      // We are not wiring CAPTCHA + visitor_move.php yet.
-      // For the next milestone, we’ll implement /api/visitor_move.php and enable this.
-      statusMsg.textContent = 'Submit not enabled yet (next step: visitor_move.php + CAPTCHA).';
-      statusMsg.className = 'muted';
+  btnSubmit.disabled = true;
+  statusMsg.textContent = 'Submitting...';
+
+  try {
+    const res = await fetch('api/visitor_move.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        fen: game.fen(),
+        pgn: game.pgn(),
+        last_move_san: pendingMove.san
+      })
     });
 
-    // initial load
-    fetchState().catch(err => {
-      statusMsg.textContent = err.message;
-      statusMsg.className = 'error';
-    });
+    const json = await res.json();
+
+    if (!res.ok || json.error) {
+      throw new Error(json.error || 'Move rejected');
+    }
+
+    statusMsg.textContent = 'Move accepted. Waiting on host.';
+    pendingMove = null;
+
+    // Refresh canonical state from server
+    await fetchState();
+
+  } catch (err) {
+    statusMsg.textContent = err.message;
+    statusMsg.className = 'error';
+    btnSubmit.disabled = false;
+  }
+});
+
   </script>
 </body>
 </html>
