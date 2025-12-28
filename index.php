@@ -39,8 +39,16 @@ require_once __DIR__ . '/config.php';
     .wrap { max-width: 980px; margin: 0 auto; }
     .row { display: flex; gap: 24px; flex-wrap: wrap; }
     .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
-    #board { width: 360px; height: 360px; display: grid; grid-template-columns: repeat(8, 1fr); border: 2px solid #111; }
+    .board-container { max-width: 520px; width: min(90vw, 520px); }
+    .board-shell { position: relative; width: 100%; aspect-ratio: 1 / 1; }
+    .board-shell::before { content: ''; display: block; padding-bottom: 100%; }
+    @supports (aspect-ratio: 1 / 1) {
+      .board-shell::before { display: none; padding-bottom: 0; }
+    }
+    #board { position: absolute; inset: 0; width: 100%; height: 100%; display: grid; grid-template-columns: repeat(10, 1fr); grid-template-rows: repeat(10, 1fr); border: 2px solid #111; border-radius: 8px; overflow: hidden; }
     .sq { display:flex; align-items:center; justify-content:center; font-size: 28px; user-select: none; }
+    .label { display:flex; align-items:center; justify-content:center; font-size: 12px; color: #555; background: #f8f8f8; }
+    .corner { background: transparent; }
     .light { background: #f0d9b5; }
     .dark  { background: #b58863; }
     .sq.pick { outline: 3px solid #0a84ff; outline-offset: -3px; }
@@ -66,7 +74,11 @@ require_once __DIR__ . '/config.php';
 
     <div class="row">
       <div class="card">
-        <div id="board" aria-label="Chess board"></div>
+        <div class="board-container">
+          <div class="board-shell">
+            <div id="board" aria-label="Chess board"></div>
+          </div>
+        </div>
         <div style="margin-top:12px;">
           <div
             class="cf-turnstile"
@@ -137,21 +149,66 @@ require_once __DIR__ . '/config.php';
 
     function algebraic(file, rank) { return file + rank; }
 
+    function getLocalColor() {
+      return visitorColor || 'black';
+    }
+
+    function getFileOrder() {
+      const files = ['a','b','c','d','e','f','g','h'];
+      return getLocalColor() === 'black' ? [...files].reverse() : files;
+    }
+
+    function getRankOrder() {
+      const ranks = [1,2,3,4,5,6,7,8];
+      return getLocalColor() === 'black' ? ranks : [...ranks].reverse();
+    }
+
     function renderBoard() {
       boardEl.innerHTML = '';
 
-      const board = game.board(); // 8x8 from rank 8 to 1
-      const files = ['a','b','c','d','e','f','g','h'];
+      const board = game.board();
+      const filesBase = ['a','b','c','d','e','f','g','h'];
+      const files = getFileOrder();
+      const ranks = getRankOrder();
 
-      // We will render from White perspective (rank 8 at top)
-      for (let r = 8; r >= 1; r--) {
-        for (let f = 0; f < 8; f++) {
-          const file = files[f];
-          const sq = algebraic(file, r);
-          const piece = board[8 - r][f];
+      for (let row = 0; row < 10; row++) {
+        for (let col = 0; col < 10; col++) {
+          const isCorner = (row === 0 || row === 9) && (col === 0 || col === 9);
+          if (isCorner) {
+            const corner = document.createElement('div');
+            corner.className = 'label corner';
+            boardEl.appendChild(corner);
+            continue;
+          }
+
+          // File labels (top/bottom)
+          if (row === 0 || row === 9) {
+            const fileLabel = document.createElement('div');
+            fileLabel.className = 'label';
+            const fileIdx = col - 1;
+            fileLabel.textContent = files[fileIdx].toUpperCase();
+            boardEl.appendChild(fileLabel);
+            continue;
+          }
+
+          // Rank labels (left/right)
+          if (col === 0 || col === 9) {
+            const rankLabel = document.createElement('div');
+            rankLabel.className = 'label';
+            const rankIdx = row - 1;
+            rankLabel.textContent = ranks[rankIdx];
+            boardEl.appendChild(rankLabel);
+            continue;
+          }
+
+          const file = files[col - 1];
+          const rank = ranks[row - 1];
+          const sq = algebraic(file, rank);
+          const fileIndex = filesBase.indexOf(file);
+          const piece = board[8 - rank][fileIndex];
 
           const div = document.createElement('div');
-          div.className = 'sq ' + (((f + r) % 2 === 0) ? 'light' : 'dark');
+          div.className = 'sq ' + (((fileIndex + rank) % 2 === 0) ? 'light' : 'dark');
           div.dataset.square = sq;
           div.textContent = piece ? pieceToChar(piece) : '';
 
