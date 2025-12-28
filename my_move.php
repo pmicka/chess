@@ -156,12 +156,12 @@
       });
 
       if (selectedSquare) {
-        const pick = boardEl.querySelector(\`.sq[data-square=\"${selectedSquare}\"]\`);
+        const pick = boardEl.querySelector(`.sq[data-square="${selectedSquare}"]`);
         if (pick) pick.classList.add('pick');
 
         const moves = game.moves({square: selectedSquare, verbose: true});
         moves.forEach(m => {
-          const hint = boardEl.querySelector(\`.sq[data-square=\"${m.to}\"]\`);
+          const hint = boardEl.querySelector(\`.sq[data-square="${m.to}"]`);
           if (hint) hint.classList.add('hint');
         });
       }
