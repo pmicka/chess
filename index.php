@@ -88,6 +88,7 @@ require_once __DIR__ . '/config.php';
     .sq.last { box-shadow: inset 0 0 0 4px rgba(255, 215, 0, 0.9); }
     #board.locked .sq { pointer-events: none; }
     .piece-svg { width: 80%; height: 80%; pointer-events: none; }
+    .piece-img { width: 90%; height: 90%; object-fit: contain; pointer-events: none; user-select: none; display: block; }
     button { padding: 10px 14px; border-radius: 10px; border: 1px solid #111; background: #111; color: #fff; cursor: pointer; font-size: 14px; }
     button:disabled { opacity: .4; cursor: not-allowed; }
     .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
@@ -251,17 +252,32 @@ require_once __DIR__ . '/config.php';
     let pollHandle = null;
     let submitting = false;
 
-    const renderPiece = (p) => {
-      if (!p) return '';
-      const isWhite = p.color === 'w';
-      const fill = isWhite ? '#f7f7f7' : '#2f2f2f';
-      const stroke = '#5a5a5a';
-      return `
-        <svg class="piece-svg" viewBox="0 0 100 100" aria-hidden="true">
-          <circle cx="50" cy="50" r="36" fill="${fill}" stroke="${stroke}" stroke-width="4"></circle>
-        </svg>
-      `;
-    };
+    function renderPiecePlaceholder(piece) {
+      if (!piece) return null;
+      const isWhite = piece.color === 'w';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 100 100');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('class', 'piece-svg');
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', '50');
+      circle.setAttribute('cy', '50');
+      circle.setAttribute('r', '36');
+      circle.setAttribute('fill', isWhite ? '#f7f7f7' : '#2f2f2f');
+      circle.setAttribute('stroke', '#5a5a5a');
+      circle.setAttribute('stroke-width', '4');
+      svg.appendChild(circle);
+      return svg;
+    }
+
+    function renderPieceElement(piece) {
+      if (!piece) return null;
+      if (uiHelpers && typeof uiHelpers.renderPieceEl === 'function') {
+        const el = uiHelpers.renderPieceEl(piece.color, piece.type);
+        if (el) return el;
+      }
+      return renderPiecePlaceholder(piece);
+    }
 
     function algebraic(file, rank) { return file + rank; }
 
@@ -322,7 +338,10 @@ require_once __DIR__ . '/config.php';
           const div = document.createElement('div');
           div.className = 'sq ' + (((fileIndex + rank) % 2 === 0) ? 'light' : 'dark');
           div.dataset.square = sq;
-          div.innerHTML = renderPiece(piece);
+          const pieceEl = renderPieceElement(piece);
+          if (pieceEl) {
+            div.appendChild(pieceEl);
+          }
 
           div.addEventListener('click', () => onSquareClick(sq));
           boardEl.appendChild(div);

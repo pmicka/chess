@@ -13,6 +13,76 @@
   }
 }(typeof self !== 'undefined' ? self : this, function () {
   const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+  const PIECE_ASSETS = {
+    w: {
+      p: '/assets/pieces/lichess/wP.svg',
+      n: '/assets/pieces/lichess/wN.svg',
+      b: '/assets/pieces/lichess/wB.svg',
+      r: '/assets/pieces/lichess/wR.svg',
+      q: '/assets/pieces/lichess/wQ.svg',
+      k: '/assets/pieces/lichess/wK.svg',
+    },
+    b: {
+      p: '/assets/pieces/lichess/bP.svg',
+      n: '/assets/pieces/lichess/bN.svg',
+      b: '/assets/pieces/lichess/bB.svg',
+      r: '/assets/pieces/lichess/bR.svg',
+      q: '/assets/pieces/lichess/bQ.svg',
+      k: '/assets/pieces/lichess/bK.svg',
+    },
+  };
+  const PIECE_ALT = {
+    p: 'Pawn',
+    n: 'Knight',
+    b: 'Bishop',
+    r: 'Rook',
+    q: 'Queen',
+    k: 'King',
+  };
+
+  function renderPlaceholderPiece(color) {
+    if (typeof document === 'undefined') return null;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', 'piece-svg');
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', '50');
+    circle.setAttribute('cy', '50');
+    circle.setAttribute('r', '36');
+    const isWhite = color === 'w';
+    circle.setAttribute('fill', isWhite ? '#f7f7f7' : '#2f2f2f');
+    circle.setAttribute('stroke', '#5a5a5a');
+    circle.setAttribute('stroke-width', '4');
+
+    svg.appendChild(circle);
+    return svg;
+  }
+
+  function renderPieceEl(color, type) {
+    if (typeof document === 'undefined') return null;
+    if (!color || !type || !PIECE_ASSETS[color] || !PIECE_ASSETS[color][type]) {
+      return renderPlaceholderPiece(color);
+    }
+
+    const alt = `${color === 'w' ? 'White' : 'Black'} ${PIECE_ALT[type] || ''}`.trim();
+    const img = document.createElement('img');
+    img.src = PIECE_ASSETS[color][type];
+    img.alt = alt || 'Chess piece';
+    img.draggable = false;
+    img.className = 'piece-img';
+    img.onerror = () => {
+      if (img.dataset.fallbackApplied === '1') return;
+      img.dataset.fallbackApplied = '1';
+      const fallback = renderPlaceholderPiece(color);
+      if (fallback && img.parentNode) {
+        img.replaceWith(fallback);
+      }
+    };
+
+    return img;
+  }
 
   /**
    * Normalize a color string to "white" or "black".
@@ -104,10 +174,12 @@
 
   return {
     FILES,
+    PIECE_ASSETS,
     normalizeColor,
     orientationLayout,
     mapSquareForOrientation,
     playerPerspectiveSquare,
     squareMatrix,
+    renderPieceEl,
   };
 }));
