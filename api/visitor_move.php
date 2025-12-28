@@ -80,7 +80,7 @@ $turnstileToken = trim(
 );
 $from = strtolower(trim($data['from'] ?? ''));
 $to = strtolower(trim($data['to'] ?? ''));
-$promotion = strtolower(trim($data['promotion'] ?? 'q'));
+$promotion = strtolower(trim($data['promotion'] ?? ''));
 $lastMoveSan = trim($data['last_move_san'] ?? '');
 $lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
 $clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
@@ -100,6 +100,13 @@ if ($turnstileToken === '') {
 if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
     http_response_code(400);
     echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
+    exit;
+}
+
+$allowedPromotions = ['q', 'r', 'b', 'n'];
+if ($promotion !== '' && !in_array($promotion, $allowedPromotions, true)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid promotion piece. Use q, r, b, or n.']);
     exit;
 }
 
@@ -241,7 +248,9 @@ try {
     } catch (Throwable $e) {
         $db->rollBack();
         http_response_code(400);
-        echo json_encode(['error' => 'Illegal move or invalid coordinates.']);
+        $msg = $e->getMessage();
+        $clientMessage = stripos((string)$msg, 'promotion') !== false ? $msg : 'Illegal move or invalid coordinates.';
+        echo json_encode(['error' => $clientMessage]);
         exit;
     }
 

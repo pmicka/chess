@@ -150,6 +150,12 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
     .status-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 14px; }
     .selected-move { margin-top: 8px; font-size: 14px; }
+    .promotion-chooser { display: none; margin-top: 8px; }
+    .promotion-chooser.show { display: block; }
+    .promotion-chooser .label { font-size: 14px; margin-bottom: 6px; color: #333; }
+    .promotion-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    .promotion-buttons .promo-btn { background: #fff; color: #111; border: 1px solid #111; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+    .promotion-buttons .promo-btn.active { background: #111; color: #fff; }
     code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
     .muted { color: #555; }
     .error { color: #b00020; }
@@ -210,6 +216,15 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       <p class="muted selected-move">
         Selected move: <code id="movePreview">none</code>
       </p>
+      <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
+        <div class="label">Promote to:</div>
+        <div class="promotion-buttons">
+          <button type="button" class="promo-btn active" data-piece="q">Queen</button>
+          <button type="button" class="promo-btn" data-piece="r">Rook</button>
+          <button type="button" class="promo-btn" data-piece="b">Bishop</button>
+          <button type="button" class="promo-btn" data-piece="n">Knight</button>
+        </div>
+      </div>
       <div class="extra-actions">
         <button id="btnCopyLink" type="button">Copy this link</button>
         <button id="btnResend" type="button">Resend link to my email</button>
@@ -264,6 +279,8 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
     const errorBanner = document.getElementById('errorBanner');
+    const promotionChooser = document.getElementById('promotionChooser');
+    const promotionButtons = Array.from(document.querySelectorAll('.promo-btn'));
     const hostToken = (() => {
       const params = new URLSearchParams(window.location.search || '');
       const fromQuery = (params.get('token') || '').trim();
@@ -282,9 +299,11 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     let youColor = 'white';
 
     let selectedSquare = null;
-    let pendingMove = null; // {from,to,promotion,san}
+    let pendingMove = null; // {from,to,promotion,san,requiresPromotion?}
+    let pendingBaseFen = null;
     let lastUpdatedTs = null;
     let stateLoadPromise = null;
+    let promotionChoice = 'q';
 
     function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
       statusMsg.textContent = message;
@@ -391,12 +410,34 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       updateHighlights();
     }
 
-    function clearSelection() {
+    function resetPromotionChooser() {
+      promotionChoice = 'q';
+      promotionButtons.forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+      });
+      promotionChooser.classList.remove('show');
+    }
+
+    function clearSelection({ restore = false } = {}) {
+      const hadPending = Boolean(pendingBaseFen);
+      if (restore && pendingBaseFen) {
+        try {
+          game.load(pendingBaseFen);
+        } catch (err) {
+          // ignore restore errors
+        }
+      }
       selectedSquare = null;
       pendingMove = null;
+      pendingBaseFen = null;
       movePreview.textContent = 'none';
       btnSubmit.disabled = true;
-      updateHighlights();
+      resetPromotionChooser();
+      if (restore && hadPending) {
+        renderBoard();
+      } else {
+        updateHighlights();
+      }
     }
 
     function formatTimestamp(ts) {
@@ -431,6 +472,48 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
     }
 
+    function promotionInfoForMove(from, to) {
+      const moves = game.moves({ square: from, verbose: true });
+      const matches = moves.filter((m) => m.to === to);
+      const promotionMoves = matches.filter((m) => m.promotion);
+      return {
+        isPromotion: promotionMoves.length > 0,
+        moves: promotionMoves,
+      };
+    }
+
+    function selectPromotionChoice(piece) {
+      const nextChoice = (piece || 'q').toLowerCase();
+      promotionChoice = nextChoice;
+      promotionButtons.forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+      });
+      if (promotionChooser && pendingMove && pendingMove.requiresPromotion && pendingBaseFen) {
+        try {
+          game.load(pendingBaseFen);
+          const move = game.move({
+            from: pendingMove.from,
+            to: pendingMove.to,
+            promotion: promotionChoice,
+          });
+          if (move) {
+            pendingMove = {
+              from: move.from,
+              to: move.to,
+              promotion: move.promotion || promotionChoice,
+              san: move.san,
+              requiresPromotion: true,
+            };
+            movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
+            btnSubmit.disabled = false;
+            renderBoard();
+          }
+        } catch (err) {
+          setStatus('Invalid promotion selection', 'error');
+        }
+      }
+    }
+
     function isYourTurn() {
       if (!state) return false;
       return state.turn_color === youColor && state.status === 'active';
@@ -439,6 +522,10 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     function onSquareClick(sq) {
       statusMsg.textContent = '';
       if (!state) return;
+
+      if (pendingMove && !selectedSquare) {
+        clearSelection({ restore: true });
+      }
 
       if (!isYourTurn()) {
         statusMsg.textContent = 'Not your turn yet. Refresh for updates.';
@@ -469,12 +556,48 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
         return;
       }
 
-      const move = game.move({ from: selectedSquare, to: sq, promotion: 'q' });
+      const promoInfo = promotionInfoForMove(selectedSquare, sq);
+      const promoOptions = promoInfo.moves.map((m) => m.promotion).filter(Boolean);
+      let promoToUse = promotionChoice;
+      if (promoInfo.isPromotion) {
+        if (!promoOptions.includes(promoToUse)) {
+          promoToUse = promoOptions[0] || 'q';
+        }
+      } else {
+        resetPromotionChooser();
+      }
+
+      if (!pendingBaseFen) {
+        pendingBaseFen = game.fen();
+      }
+
+      const move = game.move({
+        from: selectedSquare,
+        to: sq,
+        ...(promoInfo.isPromotion ? { promotion: promoToUse } : {}),
+      });
       if (!move) {
+        if (pendingBaseFen) {
+          try { game.load(pendingBaseFen); } catch (err) { /* ignore */ }
+        }
+        pendingBaseFen = null;
         return;
       }
 
-      pendingMove = { from: move.from, to: move.to, promotion: move.promotion || 'q', san: move.san };
+      pendingMove = {
+        from: move.from,
+        to: move.to,
+        promotion: promoInfo.isPromotion ? (move.promotion || promoToUse) : '',
+        san: move.san,
+        requiresPromotion: promoInfo.isPromotion,
+      };
+      if (promoInfo.isPromotion) {
+        promotionChooser.classList.add('show');
+        promotionButtons.forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.piece === pendingMove.promotion);
+        });
+        promotionChoice = pendingMove.promotion;
+      }
       movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
       btnSubmit.disabled = false;
       selectedSquare = null;
@@ -630,6 +753,14 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       updateLastUpdated('Failed to refresh', 'error');
     }));
 
+    promotionButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectPromotionChoice(btn.dataset.piece);
+        promotionChooser.classList.add('show');
+      });
+    });
+    resetPromotionChooser();
+
     btnSubmit.addEventListener('click', async () => {
       if (!hostToken) {
         setStatus('Missing token. Please use the link from your email.', 'error');
@@ -642,7 +773,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       const payload = {
         from: pendingMove.from,
         to: pendingMove.to,
-        promotion: pendingMove.promotion || 'q',
+        promotion: pendingMove && pendingMove.requiresPromotion ? pendingMove.promotion : '',
         move: pendingMove.san,
         token: hostToken,
         last_known_updated_at: lastUpdatedTs,
@@ -662,6 +793,8 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
         }
 
         setStatus(json.message || 'Move accepted. Visitors may move now.', 'ok');
+        pendingBaseFen = null;
+        resetPromotionChooser();
         await fetchState();
       } catch (err) {
         setStatus(err.message || 'Move rejected', 'error');

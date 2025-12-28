@@ -672,6 +672,15 @@ function apply_move_to_fen(string $fen, string $from, string $to, string $promot
     $rankDiff = $toCoords['rankIndex'] - $fromCoords['rankIndex'];
     $newCastling = $castling === '' ? '-' : $castling;
     $captureOccurred = false;
+    $normalizedPromotion = strtolower((string)$promotion);
+    if ($normalizedPromotion !== '' && !in_array($normalizedPromotion[0], ['q', 'r', 'b', 'n'], true)) {
+        throw new InvalidArgumentException('Invalid promotion piece.');
+    }
+    $promotionSymbol = $normalizedPromotion === '' ? '' : $normalizedPromotion[0];
+    $requiresPromotion = $isPawn && (($movingColor === 'w' && $toCoords['rankIndex'] === 0) || ($movingColor === 'b' && $toCoords['rankIndex'] === 7));
+    if ($requiresPromotion && $promotionSymbol === '') {
+        throw new InvalidArgumentException('Promotion piece required for pawn promotion.');
+    }
 
     // Clear source square
     $board[$fromCoords['rankIndex']][$fromCoords['file']] = null;
@@ -724,9 +733,8 @@ function apply_move_to_fen(string $fen, string $from, string $to, string $promot
         }
 
         // Place moved piece (with promotion if applicable)
-        if ($isPawn && (($movingColor === 'w' && $toCoords['rankIndex'] === 0) || ($movingColor === 'b' && $toCoords['rankIndex'] === 7))) {
-            $promoPiece = strtolower($promotion ?: 'q')[0];
-            $piece = $movingColor === 'w' ? strtoupper($promoPiece) : strtolower($promoPiece);
+        if ($requiresPromotion) {
+            $piece = $movingColor === 'w' ? strtoupper($promotionSymbol) : strtolower($promotionSymbol);
         }
         $board[$toCoords['rankIndex']][$toCoords['file']] = $piece;
 

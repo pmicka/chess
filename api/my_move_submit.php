@@ -53,7 +53,7 @@ $action = strtolower(trim($data['action'] ?? 'submit')) ?: 'submit';
 $tokenValue = trim($data['token'] ?? '');
 $from = strtolower(trim($data['from'] ?? ''));
 $to = strtolower(trim($data['to'] ?? ''));
-$promotion = strtolower(trim($data['promotion'] ?? 'q'));
+$promotion = strtolower(trim($data['promotion'] ?? ''));
 $move = trim($data['move'] ?? '');
 $lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
 $clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
@@ -164,6 +164,14 @@ try {
         exit;
     }
 
+    $allowedPromotions = ['q', 'r', 'b', 'n'];
+    if ($promotion !== '' && !in_array($promotion, $allowedPromotions, true)) {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid promotion piece. Use q, r, b, or n.']);
+        exit;
+    }
+
     $stmt = $db->prepare("
         SELECT id, host_color, visitor_color, turn_color, status, pgn, fen, updated_at
         FROM games
@@ -223,7 +231,9 @@ try {
     } catch (Throwable $e) {
         $db->rollBack();
         http_response_code(400);
-        echo json_encode(['error' => 'Illegal move or invalid coordinates.']);
+        $msg = $e->getMessage();
+        $clientMessage = stripos((string)$msg, 'promotion') !== false ? $msg : 'Illegal move or invalid coordinates.';
+        echo json_encode(['error' => $clientMessage]);
         exit;
     }
 
