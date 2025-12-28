@@ -19,7 +19,7 @@
 
 // Load configuration (required for DB_PATH and other settings).
 if (!file_exists(__DIR__ . '/config.php')) {
-    exit('Missing config.php. Copy config.example.php to config.php and fill in your values.');
+    throw new RuntimeException('Missing config.php. Copy config.example.php to config.php and fill in your values.');
 }
 require_once __DIR__ . '/config.php';
 
@@ -35,8 +35,44 @@ $requiredConstants = [
 
 foreach ($requiredConstants as $name) {
     if (!defined($name)) {
-        exit("Configuration error: missing constant {$name} in config.php.");
+        throw new RuntimeException("Configuration error: missing constant {$name} in config.php.");
     }
+}
+
+/**
+ * Return the client IP (best-effort) for logging.
+ */
+function client_ip(): string
+{
+    return $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+}
+
+/**
+ * Redact a token by returning only the suffix (default last 6 characters).
+ */
+function token_suffix(string $token, int $length = 6): string
+{
+    if ($token === '') {
+        return '';
+    }
+    return substr($token, -1 * max(1, $length));
+}
+
+/**
+ * Emit a structured error_log line: "event key=value key2=value2".
+ */
+function log_event(string $event, array $fields = []): void
+{
+    $parts = [$event];
+    foreach ($fields as $key => $value) {
+        if ($value === null) {
+            continue;
+        }
+        $safeKey = preg_replace('/[^a-zA-Z0-9_:-]/', '_', (string)$key);
+        $safeValue = preg_replace('/\s+/', '_', (string)$value);
+        $parts[] = "{$safeKey}={$safeValue}";
+    }
+    error_log(implode(' ', $parts));
 }
 
 /**
@@ -57,15 +93,51 @@ function resolve_db_path_info(): array
     $realFile = realpath($anchored) ?: null;
     $exists = file_exists($anchored);
     $size = $exists ? @filesize($anchored) : null;
+    $dirExists = is_dir($dir);
+    $dirWritable = $dirExists ? is_writable($dir) : false;
 
     return [
         'configured' => $configured,
         'anchored' => $anchored,
+        'dir_anchored' => $dir,
         'realpath' => $realFile,
         'dir_real' => $dirReal,
         'exists' => $exists,
         'size' => $size,
+        'dir_exists' => $dirExists,
+        'dir_writable' => $dirWritable,
     ];
+}
+
+/**
+ * Validate that the DB directory exists and is writable. Creates the directory
+ * when missing (if permitted) and throws a RuntimeException on failure.
+ */
+function ensure_db_path_ready(bool $createDir = true): array
+{
+    $info = resolve_db_path_info();
+    $dir = $info['dir_anchored'];
+
+    if (!$info['dir_exists'] && $createDir) {
+        @mkdir($dir, 0775, true);
+        clearstatcache(true, $dir);
+        $info['dir_exists'] = is_dir($dir);
+        $info['dir_writable'] = $info['dir_exists'] ? is_writable($dir) : false;
+    }
+
+    if (!$info['dir_exists']) {
+        throw new RuntimeException('Database directory is missing and could not be created.');
+    }
+    if (!$info['dir_writable']) {
+        throw new RuntimeException('Database directory is not writable.');
+    }
+
+    $dbPath = $info['realpath'] ?? $info['anchored'];
+    if ($info['exists'] && !is_writable($dbPath)) {
+        throw new RuntimeException('Database file exists but is not writable.');
+    }
+
+    return $info;
 }
 
 /**
@@ -75,14 +147,16 @@ function log_db_path_info(string $context): array
 {
     $info = resolve_db_path_info();
     error_log(sprintf(
-        '%s db_path configured=%s anchored=%s real=%s dir=%s exists=%s size=%s',
+        '%s db_path configured=%s anchored=%s real=%s dir=%s exists=%s size=%s dir_exists=%s dir_writable=%s',
         $context,
         $info['configured'],
         $info['anchored'],
         $info['realpath'] ?? 'n/a',
         $info['dir_real'],
         $info['exists'] ? '1' : '0',
-        $info['size'] !== null ? (string)$info['size'] : 'n/a'
+        $info['size'] !== null ? (string)$info['size'] : 'n/a',
+        $info['dir_exists'] ? '1' : '0',
+        $info['dir_writable'] ? '1' : '0'
     ));
 
     return $info;
@@ -98,7 +172,7 @@ function get_db(): PDO
         return $pdo;
     }
 
-    $dbInfo = resolve_db_path_info();
+    $dbInfo = ensure_db_path_ready(true);
     $dbPath = $dbInfo['realpath'] ?? $dbInfo['anchored'];
 
     $pdo = new PDO('sqlite:' . $dbPath);
@@ -666,6 +740,8 @@ function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface
 
     $emailHeaders = 'From: ' . MAIL_FROM . "\r\n";
 
+    $tokenSuffix = token_suffix($hostToken);
+
     try {
         $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
         if ($mailSent === false) {
@@ -674,6 +750,12 @@ function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface
     } catch (Throwable $mailErr) {
         $warning = 'Email failed';
     }
+
+    log_event('email_host_turn', [
+        'game_id' => $gameId,
+        'token_suffix' => $tokenSuffix,
+        'result' => $warning === null ? 'sent' : 'failed',
+    ]);
 
     if ($warning !== null) {
         $logLine = sprintf(

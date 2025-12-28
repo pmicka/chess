@@ -22,10 +22,6 @@
 
 header('Content-Type: application/json');
 
-require_once __DIR__ . '/../db.php';
-
-log_db_path_info('state.php');
-
 function respond(int $statusCode, array $payload): void
 {
     http_response_code($statusCode);
@@ -34,8 +30,19 @@ function respond(int $statusCode, array $payload): void
 }
 
 try {
+    require_once __DIR__ . '/../db.php';
+} catch (Throwable $e) {
+    respond(503, ['ok' => false, 'message' => $e->getMessage(), 'code' => 'config']);
+}
+
+log_db_path_info('state.php');
+
+try {
     $db = get_db();
     error_log('state.php db_open=ok');
+} catch (RuntimeException $e) {
+    error_log('state.php db_path=fail: ' . $e->getMessage());
+    respond(503, ['ok' => false, 'message' => $e->getMessage(), 'code' => 'db_path']);
 } catch (Throwable $e) {
     error_log('state.php db_open=fail: ' . $e->getMessage());
     respond(500, ['ok' => false, 'message' => 'Database unavailable.', 'code' => 'db_open']);

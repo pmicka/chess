@@ -121,10 +121,6 @@ require_once __DIR__ . '/config.php';
     }
     .error-block.show { display: block; }
     .turnstile-wrap { margin-top: 12px; }
-    #board { transform-origin: center center; }
-    .board-shell.flipped #board { transform: rotate(180deg); }
-    .board-shell.flipped .sq,
-    .board-shell.flipped .label { transform: rotate(180deg); }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
@@ -187,6 +183,7 @@ require_once __DIR__ . '/config.php';
     </div>
   </div>
 
+  <script src="assets/ui_helpers.js"></script>
   <script src="assets/chess.min.js"></script>
   <script>
     // Minimal board renderer + click-to-move UI using chess.js
@@ -210,11 +207,12 @@ require_once __DIR__ . '/config.php';
     const turnstileWidget = document.querySelector('.cf-turnstile');
     const updateBanner = document.getElementById('updateBanner');
     const btnBannerRefresh = document.getElementById('btnBannerRefresh');
-    const boardShell = document.querySelector('.board-shell');
     boardEl.classList.add('locked');
 
     window.turnstileToken = null;
     const game = new Chess();
+    const uiHelpers = window.ChessUI || {};
+    const filesBase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     let state = null;
 
     // visitor plays black in your JSON example; but we read it from state
@@ -246,13 +244,23 @@ require_once __DIR__ . '/config.php';
 
     function algebraic(file, rank) { return file + rank; }
 
+    function getOrientationLayout(color) {
+      if (uiHelpers && typeof uiHelpers.orientationLayout === 'function') {
+        return uiHelpers.orientationLayout(color);
+      }
+      const isBlack = String(color).toLowerCase() === 'black';
+      return {
+        files: isBlack ? [...filesBase].reverse() : [...filesBase],
+        ranks: isBlack ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1],
+      };
+    }
+
     function renderBoard() {
       boardEl.innerHTML = '';
 
-      const board = game.board();
-      const filesBase = ['a','b','c','d','e','f','g','h'];
-      const files = filesBase;
-      const ranks = [8,7,6,5,4,3,2,1];
+      const layout = getOrientationLayout(visitorColor);
+      const files = layout.files;
+      const ranks = layout.ranks;
 
       for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
@@ -288,7 +296,7 @@ require_once __DIR__ . '/config.php';
           const rank = ranks[row - 1];
           const sq = algebraic(file, rank);
           const fileIndex = filesBase.indexOf(file);
-          const piece = board[8 - rank][fileIndex];
+          const piece = game.get(sq);
 
           const div = document.createElement('div');
           div.className = 'sq ' + (((fileIndex + rank) % 2 === 0) ? 'light' : 'dark');
@@ -302,13 +310,6 @@ require_once __DIR__ . '/config.php';
 
       updateHighlights();
     }
-
-    function setBoardOrientation() {
-      if (!boardShell) return;
-      const shouldFlip = visitorColor === 'black';
-      boardShell.classList.toggle('flipped', shouldFlip);
-    }
-
     function clearSelection() {
       selectedSquare = null;
       pendingMove = null;
@@ -452,6 +453,22 @@ require_once __DIR__ . '/config.php';
       statusSpinner.classList.toggle('show', showSpinner);
     }
 
+    function blockForStateError(message) {
+      setStatus(message, 'error');
+      btnSubmit.disabled = true;
+      pendingMove = null;
+      selectedSquare = null;
+      movePreview.textContent = 'none';
+      boardEl.classList.add('locked');
+      showErrors([message]);
+      try {
+        game.clear();
+      } catch (err) {
+        // ignore
+      }
+      renderBoard();
+    }
+
     function setSubmittingState(isSubmitting) {
       submitting = isSubmitting;
       btnSubmit.disabled = true;
@@ -525,16 +542,13 @@ require_once __DIR__ . '/config.php';
       try {
         game.load(state.fen);
       } catch (err) {
-        setStatus('Invalid FEN from server. Refresh later.', 'error');
-        boardEl.classList.add('locked');
-        showErrors(['Invalid FEN from server']);
+        blockForStateError('Invalid FEN from server. Refresh later.');
         return;
       }
       lastMoveSquares = deriveLastMoveSquares(state);
 
       debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
       renderBoard();
-      setBoardOrientation();
 
       updateStatusMessage();
 
@@ -577,13 +591,16 @@ require_once __DIR__ . '/config.php';
       const res = await fetch('api/state.php', { cache: 'no-store' });
       if (!res.ok) throw new Error('Failed to load state');
       const json = await res.json();
+      if (!json || json.ok === false) {
+        const message = (json && json.message) ? json.message : 'Failed to load state';
+        throw new Error(message);
+      }
 
       handleIncomingState(json, { resetSelection, allowQueue });
     }
 
     function handleStateError(err) {
-      setStatus(err.message || 'Failed to load state', 'error');
-      boardEl.classList.add('locked');
+      blockForStateError(err.message || 'Failed to load state');
     }
 
     function startPolling() {

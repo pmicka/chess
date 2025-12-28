@@ -5,21 +5,24 @@
 
 header('Content-Type: application/json');
 
-$configPath = __DIR__ . '/../config.php';
-$loadedConfig = false;
-
-if (is_readable($configPath)) {
-    require_once $configPath;
-    $loadedConfig = true;
-}
-
-if (!$loadedConfig || !defined('ADMIN_RESET_KEY') || ADMIN_RESET_KEY === '') {
-    http_response_code(500);
-    echo json_encode(['error' => 'Server misconfigured: ADMIN_RESET_KEY not set']);
+function respond_json(int $status, array $payload): void
+{
+    http_response_code($status);
+    echo json_encode($payload);
     exit;
 }
 
-require_once __DIR__ . '/../db.php';
+try {
+    require_once __DIR__ . '/../db.php';
+    log_db_path_info('admin_reset');
+    ensure_db_path_ready(true);
+} catch (Throwable $e) {
+    respond_json(503, ['error' => $e->getMessage(), 'code' => 'config']);
+}
+
+if (!defined('ADMIN_RESET_KEY') || ADMIN_RESET_KEY === '') {
+    respond_json(503, ['error' => 'Server misconfigured: ADMIN_RESET_KEY not set', 'code' => 'admin_key_missing']);
+}
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -73,15 +76,11 @@ if ($headerKey !== '') {
 }
 
 if ($providedKey === '' || $usedKeySource === null) {
-    http_response_code(401);
-    echo json_encode(['error' => 'Admin key missing']);
-    exit;
+    respond_json(401, ['error' => 'Admin key missing', 'code' => 'admin_key_missing']);
 }
 
 if (!hash_equals(ADMIN_RESET_KEY, $providedKey)) {
-    http_response_code(403);
-    echo json_encode(['error' => 'Forbidden']);
-    exit;
+    respond_json(403, ['error' => 'Forbidden', 'code' => 'forbidden']);
 }
 
 $db = null;
@@ -151,6 +150,11 @@ try {
         'loaded_config' => true,
         'used_key_source' => $usedKeySource,
     ]);
+} catch (RuntimeException $e) {
+    if ($db instanceof PDO && $db->inTransaction()) {
+        $db->rollBack();
+    }
+    respond_json(503, ['error' => $e->getMessage(), 'code' => 'db_path']);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();

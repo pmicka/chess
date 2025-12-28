@@ -27,7 +27,13 @@
 
 header('Content-Type: application/json');
 
-require_once __DIR__ . '/../db.php';
+try {
+    require_once __DIR__ . '/../db.php';
+} catch (Throwable $e) {
+    http_response_code(503);
+    echo json_encode(['error' => $e->getMessage()]);
+    exit;
+}
 log_db_path_info('my_move_submit');
 
 // MVP: no token required. We only accept POST requests with JSON (or form) payload.
@@ -172,6 +178,16 @@ try {
         exit;
     }
 
+    log_event('host_move_attempt', [
+        'ip' => client_ip(),
+        'game_id' => $game['id'] ?? null,
+        'turn' => $game['turn_color'] ?? null,
+        'token_suffix' => token_suffix($tokenValue),
+        'from' => $from,
+        'to' => $to,
+        'client_fen_len' => $clientFen !== null ? strlen($clientFen) : null,
+    ]);
+
     error_log(sprintf(
         'my_move_submit game_found=1 game_id=%d fen_length=%d',
         (int)$game['id'],
@@ -241,6 +257,12 @@ try {
         'next_turn' => $nextTurn,
         'message' => 'Move accepted. Visitors may move now.',
     ]);
+} catch (RuntimeException $e) {
+    if ($db instanceof PDO && $db->inTransaction()) {
+        $db->rollBack();
+    }
+    http_response_code(503);
+    echo json_encode(['error' => $e->getMessage()]);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();

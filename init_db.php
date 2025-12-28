@@ -19,10 +19,20 @@
  * - Run from shell: php init_db.php
  * - Should print a clear success/failure message.
  */
+try {
+    require_once __DIR__ . '/db.php';
+} catch (Throwable $e) {
+    fwrite(STDERR, "Configuration error: " . $e->getMessage() . "\n");
+    exit(1);
+}
 
-require_once __DIR__ . '/db.php';
-
-$db = get_db();
+try {
+    ensure_db_path_ready(true);
+    $db = get_db();
+} catch (Throwable $e) {
+    fwrite(STDERR, "Database path error: " . $e->getMessage() . "\n");
+    exit(1);
+}
 
 // Create tables if they do not exist.
 $db->exec("

@@ -26,7 +26,14 @@ require_once __DIR__ . '/db.php';
 log_db_path_info('my_move.php');
 
 $tokenValue = isset($_GET['token']) ? trim($_GET['token']) : '';
-$db = get_db();
+$db = null;
+try {
+    $db = get_db();
+} catch (Throwable $e) {
+    http_response_code(503);
+    echo 'Database unavailable: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
+    exit;
+}
 $tokenRow = fetch_valid_host_token($db, $tokenValue);
 
 if ($tokenRow) {
@@ -162,10 +169,6 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     .spinner.show { display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .extra-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; font-size: 14px; }
-    #board { transform-origin: center center; }
-    .board-shell.flipped #board { transform: rotate(180deg); }
-    .board-shell.flipped .sq,
-    .board-shell.flipped .label { transform: rotate(180deg); }
   </style>
 </head>
 <body>
@@ -227,6 +230,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     </div>
   </div>
 
+  <script src="assets/ui_helpers.js"></script>
   <script src="assets/chess.min.js"></script>
   <script>
     window.hostToken = <?php echo json_encode($tokenValue); ?>;
@@ -254,12 +258,13 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
     const errorBanner = document.getElementById('errorBanner');
-    const boardShell = document.querySelector('.board-shell');
     const hostToken = window.hostToken || '';
 
     const DEBUG = false;
 
     const game = new Chess();
+    const uiHelpers = window.ChessUI || {};
+    const filesBase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     let state = null;
 
     let visitorColor = 'black';
@@ -291,13 +296,23 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 
     function algebraic(file, rank) { return file + rank; }
 
+    function getOrientationLayout(color) {
+      if (uiHelpers && typeof uiHelpers.orientationLayout === 'function') {
+        return uiHelpers.orientationLayout(color);
+      }
+      const isBlack = String(color).toLowerCase() === 'black';
+      return {
+        files: isBlack ? [...filesBase].reverse() : [...filesBase],
+        ranks: isBlack ? [1, 2, 3, 4, 5, 6, 7, 8] : [8, 7, 6, 5, 4, 3, 2, 1],
+      };
+    }
+
     function renderBoard() {
       boardEl.innerHTML = '';
 
-      const board = game.board();
-      const filesBase = ['a','b','c','d','e','f','g','h'];
-      const files = filesBase;
-      const ranks = [8,7,6,5,4,3,2,1];
+      const layout = getOrientationLayout(youColor);
+      const files = layout.files;
+      const ranks = layout.ranks;
 
       for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
@@ -331,7 +346,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           const rank = ranks[row - 1];
           const sq = algebraic(file, rank);
           const fileIndex = filesBase.indexOf(file);
-          const piece = board[8 - rank][fileIndex];
+          const piece = game.get(sq);
 
           const div = document.createElement('div');
           div.className = 'sq ' + (((fileIndex + rank) % 2 === 0) ? 'light' : 'dark');
@@ -344,12 +359,6 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
 
       updateHighlights();
-    }
-
-    function setBoardOrientation() {
-      if (!boardShell) return;
-      const shouldFlip = youColor === 'black';
-      boardShell.classList.toggle('flipped', shouldFlip);
     }
 
     function clearSelection() {
@@ -520,7 +529,6 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 
         debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
         renderBoard();
-        setBoardOrientation();
 
         lastUpdatedTs = state.updated_at || null;
         updateLastUpdated(formatTimestamp(lastUpdatedTs), 'muted');
