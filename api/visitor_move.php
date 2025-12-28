@@ -28,3 +28,126 @@
  * - Email host a link to /my_move.php?token=...
  */
 
+header('Content-Type: application/json');
+
+require_once __DIR__ . '/../db.php';
+
+// MVP: accept only POST with JSON payload (no CAPTCHA yet).
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'POST required']);
+    exit;
+}
+
+$input = file_get_contents('php://input');
+$data = json_decode($input, true);
+if (!is_array($data)) {
+    $data = $_POST; // fallback
+}
+
+$fen = trim($data['fen'] ?? '');
+$pgn = trim($data['pgn'] ?? '');
+$lastMoveSan = trim($data['last_move_san'] ?? '');
+
+if ($fen === '' || $pgn === '' || $lastMoveSan === '') {
+    http_response_code(400);
+    echo json_encode(['error' => 'Missing required fields (fen, pgn, last_move_san).']);
+    exit;
+}
+
+$db = null;
+
+try {
+    $db = get_db();
+    $db->beginTransaction();
+
+    // Load the latest active game.
+    $stmt = $db->query("
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status
+        FROM games
+        WHERE status = 'active'
+        ORDER BY updated_at DESC
+        LIMIT 1
+    ");
+    $game = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$game) {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'No active game found.']);
+        exit;
+    }
+
+    if ($game['turn_color'] === $game['you_color']) {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'It is not the visitor turn.']);
+        exit;
+    }
+
+    // Acquire a lock for this visitor turn. If it already exists, reject.
+    // Lock is cleared when the host successfully submits their move (see api/my_move_submit.php).
+    $lock = $db->prepare("
+        INSERT INTO locks (game_id, name)
+        SELECT :game_id, :name
+        WHERE NOT EXISTS (
+            SELECT 1 FROM locks WHERE game_id = :game_id AND name = :name
+        )
+    ");
+
+    $lock->execute([
+        ':game_id' => $game['id'],
+        ':name' => 'visitor_turn',
+    ]);
+
+    if ($lock->rowCount() === 0) {
+        $db->rollBack();
+        http_response_code(409);
+        echo json_encode(['error' => 'Move already accepted for this turn']);
+        exit;
+    }
+
+    // Save visitor move and flip turn back to host (you_color).
+    $update = $db->prepare("
+        UPDATE games
+        SET fen = :fen,
+            pgn = :pgn,
+            last_move_san = :last_move_san,
+            turn_color = host_color,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = :id
+    ");
+
+    $update->execute([
+        ':fen' => $fen,
+        ':pgn' => $pgn,
+        ':last_move_san' => $lastMoveSan,
+        ':id' => $game['id'],
+    ]);
+
+    // Fetch the updated state for the response.
+    $stateStmt = $db->prepare("
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
+        FROM games
+        WHERE id = :id
+        LIMIT 1
+    ");
+    $stateStmt->execute([':id' => $game['id']]);
+    $updatedGame = $stateStmt->fetch(PDO::FETCH_ASSOC);
+
+    $db->commit();
+
+    $updatedGame['id'] = (int)$updatedGame['id'];
+
+    echo json_encode([
+        'ok' => true,
+        'game' => $updatedGame,
+        'message' => 'Move accepted. Waiting for host.',
+    ]);
+} catch (Throwable $e) {
+    if ($db instanceof PDO && $db->inTransaction()) {
+        $db->rollBack();
+    }
+    http_response_code(500);
+    echo json_encode(['error' => 'Failed to save move.']);
+}
