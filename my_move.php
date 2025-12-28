@@ -169,6 +169,11 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     .spinner.show { display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .extra-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; font-size: 14px; }
+    .board-disabled {
+      pointer-events: none;
+      opacity: 0.6;
+      filter: grayscale(1);
+    }
   </style>
 </head>
 <body>
@@ -258,7 +263,12 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
     const errorBanner = document.getElementById('errorBanner');
-    const hostToken = window.hostToken || '';
+    const hostToken = (() => {
+      const params = new URLSearchParams(window.location.search || '');
+      const fromQuery = (params.get('token') || '').trim();
+      if (fromQuery) return fromQuery;
+      return (window.hostToken || '').trim();
+    })();
 
     const DEBUG = false;
 
@@ -273,6 +283,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     let selectedSquare = null;
     let pendingMove = null; // {from,to,promotion,san}
     let lastUpdatedTs = null;
+    let stateLoadPromise = null;
 
     function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
       statusMsg.textContent = message;
@@ -463,101 +474,136 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       errorBanner.style.display = 'none';
     }
 
+    function setBoardInteractive(enabled) {
+      if (!boardEl) return;
+      boardEl.classList.toggle('board-disabled', !enabled);
+      boardEl.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+      btnSubmit.disabled = !enabled || btnSubmit.disabled;
+    }
+
+    function buildStateUrl() {
+      const params = new URLSearchParams();
+      if (hostToken) params.set('token', hostToken);
+      const qs = params.toString();
+      return qs ? `api/state.php?${qs}` : 'api/state.php';
+    }
+
     async function fetchState() {
-      setStatus('Loading…', 'muted', { showSpinner: true });
-      clearSelection();
-      clearErrorBanner();
-      updateLastUpdated('Updating...', 'muted');
-      btnRefresh.disabled = true;
-
-      try {
-        const query = hostToken ? `?token=${encodeURIComponent(hostToken)}` : '';
-        const url = `api/state.php${query}`;
-        const res = await fetch(url, { cache: 'no-store' });
-        if (DEBUG) console.log('fetchState status', res.status);
-        if (!res.ok) {
-          const text = await res.text();
-          if (DEBUG) console.log('fetchState body', text);
-          throw new Error(`Failed to load state (HTTP ${res.status})`);
-        }
-
-        let json;
-        try {
-          json = await res.json();
-        } catch (parseErr) {
-          if (DEBUG) console.log('fetchState parse error', parseErr);
-          throw new Error('Failed to parse state response');
-        }
-
-        if (DEBUG) console.log('fetchState payload', json);
-
-        if (!json || json.ok === false) {
-          const msg = (json && json.message) ? json.message : 'Failed to load state';
-          throw new Error(msg);
-        }
-
-        state = json;
-
-        visitorColor = state.visitor_color;
-        youColor = state.you_color;
-
-        visitorColorLabel.textContent = visitorColor;
-        hostColorLabel.textContent = youColor;
-        turnLabel.textContent = state.turn_color;
-
-        fenBox.value = state.fen;
-        pgnBox.value = state.pgn;
-
-        game.reset();
-        let loadedFromPgn = false;
-        if (state.pgn) {
-          try {
-            game.load_pgn(state.pgn);
-            loadedFromPgn = true;
-          } catch (err) {
-            loadedFromPgn = false;
-          }
-        }
-
-        if (!loadedFromPgn) {
-          try {
-            game.load(state.fen);
-          } catch (err) {
-            throw new Error('Invalid FEN from server');
-          }
-        }
-
-        debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
-        renderBoard();
-
-        lastUpdatedTs = state.updated_at || null;
-        updateLastUpdated(formatTimestamp(lastUpdatedTs), 'muted');
-
-        setStatus(isYourTurn() ? 'Your turn.' : 'Waiting on visitors.', isYourTurn() ? 'ok' : 'muted');
-        btnSubmit.disabled = true;
-        clearErrorBanner();
-        if (statusSpinner) statusSpinner.classList.remove('show');
-      } catch (err) {
-        const message = err && err.message ? err.message : 'Failed to load state';
-        setStatus(message, 'error');
-        updateLastUpdated('Failed to load state', 'error');
-        showErrorBanner(`Failed to load game state: ${message}`);
-        // Do not fall back to the starting position on error.
-        try {
-          if (typeof game.clear === 'function') {
-            game.clear();
-          }
-        } catch (e) {
-          // noop
-        }
-        renderBoard();
-        fenBox.value = '';
-        pgnBox.value = '';
-        movePreview.textContent = 'none';
-        throw err;
-      } finally {
-        btnRefresh.disabled = false;
+      if (stateLoadPromise) {
+        return stateLoadPromise;
       }
+
+      stateLoadPromise = (async () => {
+        setStatus('Loading…', 'muted', { showSpinner: true });
+        clearSelection();
+        clearErrorBanner();
+        updateLastUpdated('Updating...', 'muted');
+        setBoardInteractive(false);
+        btnRefresh.disabled = true;
+
+        try {
+          const url = buildStateUrl();
+          const res = await fetch(url, { cache: 'no-store' });
+          if (DEBUG) console.log('fetchState status', res.status);
+
+          const contentType = res.headers.get('content-type') || '';
+          let json = null;
+          if (contentType.includes('application/json')) {
+            try {
+              json = await res.json();
+            } catch (parseErr) {
+              if (DEBUG) console.log('fetchState parse error', parseErr);
+            }
+          } else {
+            const text = await res.text();
+            if (DEBUG) console.log('fetchState body', text);
+          }
+
+          if (!res.ok || (json && json.ok === false)) {
+            const err = new Error((json && json.message) || `Failed to load state (HTTP ${res.status})`);
+            err.status = res.status;
+            err.code = json ? json.code : undefined;
+            throw err;
+          }
+
+          if (!json) {
+            throw new Error('Failed to parse state response');
+          }
+
+          if (DEBUG) console.log('fetchState payload', json);
+
+          state = json;
+
+          visitorColor = state.visitor_color;
+          youColor = state.you_color;
+
+          visitorColorLabel.textContent = visitorColor;
+          hostColorLabel.textContent = youColor;
+          turnLabel.textContent = state.turn_color;
+
+          fenBox.value = state.fen;
+          pgnBox.value = state.pgn;
+
+          game.reset();
+          let loadedFromPgn = false;
+          if (state.pgn) {
+            try {
+              game.load_pgn(state.pgn);
+              loadedFromPgn = true;
+            } catch (err) {
+              loadedFromPgn = false;
+            }
+          }
+
+          if (!loadedFromPgn) {
+            try {
+              game.load(state.fen);
+            } catch (err) {
+              throw new Error('Invalid FEN from server');
+            }
+          }
+
+          debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
+          renderBoard();
+
+          lastUpdatedTs = state.updated_at || null;
+          updateLastUpdated(formatTimestamp(lastUpdatedTs), 'muted');
+
+          setStatus(isYourTurn() ? 'Your turn.' : 'Waiting on visitors.', isYourTurn() ? 'ok' : 'muted');
+          btnSubmit.disabled = true;
+          clearErrorBanner();
+          if (statusSpinner) statusSpinner.classList.remove('show');
+          setBoardInteractive(true);
+        } catch (err) {
+          state = null;
+          const isAuthError = [401, 403, 410].includes(err.status);
+          const message = err && err.message ? err.message : 'Failed to load state';
+          const friendlyMessage = isAuthError ? 'Host link invalid or expired. Please resend link.' : message;
+
+          setStatus(friendlyMessage, 'error');
+          updateLastUpdated('Failed to load state', 'error');
+          showErrorBanner(`Failed to load game state: ${friendlyMessage}`);
+          setBoardInteractive(false);
+          // Do not fall back to the starting position on error.
+          try {
+            if (typeof game.clear === 'function') {
+              game.clear();
+            }
+          } catch (e) {
+            // noop
+          }
+          renderBoard();
+          fenBox.value = '';
+          pgnBox.value = '';
+          movePreview.textContent = 'none';
+          throw err;
+        } finally {
+          btnRefresh.disabled = false;
+          stateLoadPromise = null;
+        }
+      })();
+
+      return stateLoadPromise;
     }
 
     btnRefresh.addEventListener('click', () => fetchState().catch(err => {
@@ -684,7 +730,8 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     copyPgnBtn.addEventListener('click', () => copyText(pgnBox.value, copyPgnMsg));
 
     fetchState().catch(err => {
-      setStatus(err.message || 'Failed to load', 'error');
+      const message = err && err.message ? err.message : 'Failed to load';
+      setStatus(message, 'error');
       updateLastUpdated('Failed to load', 'error');
     });
   </script>
