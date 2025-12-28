@@ -316,10 +316,16 @@ function insert_host_move_token(PDO $db, int $gameId, DateTimeImmutable $expires
  * Validate and return a host token row for "your_move" purpose.
  * Returns null if missing, expired, or already used.
  */
-function fetch_valid_host_token(PDO $db, string $tokenValue): ?array
+function validate_host_token(PDO $db, string $tokenValue): array
 {
+    $result = [
+        'ok' => false,
+        'code' => 'missing',
+        'row' => null,
+    ];
+
     if ($tokenValue === '') {
-        return null;
+        return $result;
     }
 
     $stmt = $db->prepare("SELECT * FROM tokens WHERE token = :token LIMIT 1");
@@ -327,21 +333,38 @@ function fetch_valid_host_token(PDO $db, string $tokenValue): ?array
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$row || ($row['purpose'] ?? '') !== 'your_move') {
-        return null;
+        $result['code'] = 'invalid';
+        return $result;
     }
 
     if (!empty($row['used']) || !empty($row['used_at'])) {
-        return null;
+        $result['code'] = 'used';
+        return $result;
     }
 
     $expiry = token_expiry_from_row($db, $row);
     if ($expiry !== null && datetime_utc() >= $expiry) {
-        return null;
+        $result['code'] = 'expired';
+        return $result;
     }
 
     $row['expires_at_dt'] = $expiry;
 
-    return $row;
+    return [
+        'ok' => true,
+        'code' => 'ok',
+        'row' => $row,
+    ];
+}
+
+function fetch_valid_host_token(PDO $db, string $tokenValue): ?array
+{
+    $validation = validate_host_token($db, $tokenValue);
+    if (($validation['ok'] ?? false) !== true) {
+        return null;
+    }
+
+    return $validation['row'] ?? null;
 }
 
 /**

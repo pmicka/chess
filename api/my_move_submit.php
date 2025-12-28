@@ -65,8 +65,8 @@ if (isset($data['fen']) || isset($data['pgn'])) {
 }
 
 if ($tokenValue === '') {
-    http_response_code(400);
-    echo json_encode(['error' => 'Token missing']);
+    http_response_code(401);
+    echo json_encode(['error' => 'Token missing', 'code' => 'AUTH_MISSING']);
     exit;
 }
 
@@ -76,13 +76,30 @@ try {
     $db = get_db();
     $db->beginTransaction();
 
-    $tokenRow = fetch_valid_host_token($db, $tokenValue);
-    if (!$tokenRow) {
+    $validation = validate_host_token($db, $tokenValue);
+    if (($validation['ok'] ?? false) !== true) {
         $db->rollBack();
-        http_response_code(401);
-        echo json_encode(['error' => 'Invalid or expired token']);
+        $code = $validation['code'] ?? 'invalid';
+        $http = $code === 'expired' ? 410 : 403;
+        error_log(sprintf(
+            'my_move_submit auth token_present=1 valid=0 code=%s path=%s',
+            $code,
+            $_SERVER['REQUEST_URI'] ?? 'n/a'
+        ));
+        http_response_code($http);
+        echo json_encode([
+            'error' => $code === 'expired' ? 'Token expired' : 'Invalid token',
+            'code' => $code === 'expired' ? 'AUTH_EXPIRED' : 'AUTH_INVALID',
+        ]);
         exit;
     }
+
+    $tokenRow = $validation['row'];
+    error_log(sprintf(
+        'my_move_submit auth token_present=1 valid=1 code=%s path=%s',
+        $validation['code'] ?? 'ok',
+        $_SERVER['REQUEST_URI'] ?? 'n/a'
+    ));
 
     if ($action === 'resend') {
         $stmt = $db->prepare("

@@ -48,17 +48,56 @@ try {
     respond(500, ['ok' => false, 'message' => 'Database unavailable.', 'code' => 'db_open']);
 }
 
+$tokenProvided = array_key_exists('token', $_GET);
 $tokenValue = isset($_GET['token']) ? trim($_GET['token']) : '';
 $tokenGameId = null;
+$tokenStatus = 'missing';
+$tokenValid = false;
+
+if ($tokenProvided && $tokenValue === '') {
+    error_log(sprintf(
+        'state.php auth token_present=1 valid=0 code=missing path=%s',
+        $_SERVER['REQUEST_URI'] ?? 'n/a'
+    ));
+    respond(401, [
+        'ok' => false,
+        'message' => 'Token missing.',
+        'code' => 'AUTH_MISSING',
+    ]);
+}
 
 if ($tokenValue !== '') {
-    $tokenRow = fetch_valid_host_token($db, $tokenValue);
-    if (!$tokenRow) {
-        error_log('state.php token=fail');
-        respond(401, ['ok' => false, 'message' => 'Invalid or expired token.', 'code' => 'invalid_token']);
+    $validation = validate_host_token($db, $tokenValue);
+    $tokenStatus = $validation['code'] ?? 'unknown';
+    $tokenValid = ($validation['ok'] ?? false) === true;
+
+    if (!$tokenValid) {
+        $httpCode = $tokenStatus === 'expired' ? 410 : 403;
+        error_log(sprintf(
+            'state.php auth token_present=1 valid=0 code=%s path=%s',
+            $tokenStatus,
+            $_SERVER['REQUEST_URI'] ?? 'n/a'
+        ));
+        respond($httpCode, [
+            'ok' => false,
+            'message' => $tokenStatus === 'expired' ? 'Token expired.' : 'Invalid host token.',
+            'code' => $tokenStatus === 'expired' ? 'AUTH_EXPIRED' : 'AUTH_INVALID',
+        ]);
     }
-    $tokenGameId = (int)$tokenRow['game_id'];
-    error_log('state.php token=pass');
+
+    $tokenRow = $validation['row'] ?? null;
+    $tokenGameId = $tokenRow ? (int)$tokenRow['game_id'] : null;
+    error_log(sprintf(
+        'state.php auth token_present=1 valid=1 code=%s path=%s',
+        $tokenStatus,
+        $_SERVER['REQUEST_URI'] ?? 'n/a'
+    ));
+} else {
+    error_log(sprintf(
+        'state.php auth token_present=0 valid=0 code=%s path=%s',
+        $tokenStatus,
+        $_SERVER['REQUEST_URI'] ?? 'n/a'
+    ));
 }
 
 if ($tokenGameId !== null) {
