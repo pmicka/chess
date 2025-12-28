@@ -168,6 +168,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     <?php if (isset($_GET['fresh']) && $_GET['fresh'] === '1'): ?>
       <p class="ok">Issued a fresh link for your current turn.</p>
     <?php endif; ?>
+    <p id="errorBanner" class="error" style="display:none;"></p>
     <p class="subhead">
       You play <strong id="hostColorLabel">white</strong>. Visitors play <strong id="visitorColorLabel">black</strong>.
       Turn: <strong id="turnLabel">...</strong>.
@@ -246,7 +247,10 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
+    const errorBanner = document.getElementById('errorBanner');
     const hostToken = window.hostToken || '';
+
+    const DEBUG = false;
 
     const game = new Chess();
     let state = null;
@@ -439,17 +443,50 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       renderBoard();
     }
 
+    function showErrorBanner(message) {
+      if (!errorBanner) return;
+      errorBanner.textContent = message;
+      errorBanner.style.display = 'block';
+    }
+
+    function clearErrorBanner() {
+      if (!errorBanner) return;
+      errorBanner.textContent = '';
+      errorBanner.style.display = 'none';
+    }
+
     async function fetchState() {
       setStatus('Loading…', 'muted', { showSpinner: true });
       clearSelection();
+      clearErrorBanner();
       updateLastUpdated('Updating...', 'muted');
       btnRefresh.disabled = true;
 
       try {
         const query = hostToken ? `?token=${encodeURIComponent(hostToken)}` : '';
-        const res = await fetch(`api/state.php${query}`, { cache: 'no-store' });
-        if (!res.ok) throw new Error('Failed to load state');
-        const json = await res.json();
+        const url = `api/state.php${query}`;
+        const res = await fetch(url, { cache: 'no-store' });
+        if (DEBUG) console.log('fetchState status', res.status);
+        if (!res.ok) {
+          const text = await res.text();
+          if (DEBUG) console.log('fetchState body', text);
+          throw new Error(`Failed to load state (HTTP ${res.status})`);
+        }
+
+        let json;
+        try {
+          json = await res.json();
+        } catch (parseErr) {
+          if (DEBUG) console.log('fetchState parse error', parseErr);
+          throw new Error('Failed to parse state response');
+        }
+
+        if (DEBUG) console.log('fetchState payload', json);
+
+        if (!json || json.ok === false) {
+          const msg = (json && json.message) ? json.message : 'Failed to load state';
+          throw new Error(msg);
+        }
 
         state = json;
 
@@ -486,10 +523,13 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 
         setStatus(isYourTurn() ? 'Your turn.' : 'Waiting on visitors.', isYourTurn() ? 'ok' : 'muted');
         btnSubmit.disabled = true;
+        clearErrorBanner();
         if (statusSpinner) statusSpinner.classList.remove('show');
       } catch (err) {
-        setStatus(err.message || 'Failed to load state', 'error');
-        updateLastUpdated('Failed to load', 'error');
+        const message = err && err.message ? err.message : 'Failed to load state';
+        setStatus(message, 'error');
+        updateLastUpdated('Failed to load state', 'error');
+        showErrorBanner(`Failed to load state: ${message}`);
         throw err;
       } finally {
         btnRefresh.disabled = false;
