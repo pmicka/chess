@@ -52,8 +52,11 @@ if ($fen === '' || $pgn === '' || $move === '') {
     exit;
 }
 
+$db = null;
+
 try {
     $db = get_db();
+    $db->beginTransaction();
 
     // Load the latest active game.
     $stmt = $db->query("
@@ -66,12 +69,14 @@ try {
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$game) {
+        $db->rollBack();
         http_response_code(400);
         echo json_encode(['error' => 'No active game found.']);
         exit;
     }
 
     if ($game['turn_color'] !== $game['host_color']) {
+        $db->rollBack();
         http_response_code(400);
         echo json_encode(['error' => 'It is not the host turn.']);
         exit;
@@ -97,6 +102,11 @@ try {
         ':id' => $game['id'],
     ]);
 
+    // Clear visitor move lock so the next visitor turn can acquire it.
+    $db->prepare("DELETE FROM locks WHERE game_id = :id")->execute([':id' => $game['id']]);
+
+    $db->commit();
+
     echo json_encode([
         'ok' => true,
         'game_id' => (int)$game['id'],
@@ -104,6 +114,9 @@ try {
         'message' => 'Move accepted. Visitors may move now.',
     ]);
 } catch (Throwable $e) {
+    if ($db instanceof PDO && $db->inTransaction()) {
+        $db->rollBack();
+    }
     http_response_code(500);
     echo json_encode(['error' => 'Failed to save move.']);
 }
