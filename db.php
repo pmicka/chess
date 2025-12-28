@@ -172,10 +172,39 @@ function get_db(): PDO
         return $pdo;
     }
 
-    $dbInfo = ensure_db_path_ready(true);
+    $dbInfo = resolve_db_path_info();
     $dbPath = $dbInfo['realpath'] ?? $dbInfo['anchored'];
+    $dbDir = dirname($dbPath);
 
-    $pdo = new PDO('sqlite:' . $dbPath);
+    if (!is_dir($dbDir)) {
+        if (!@mkdir($dbDir, 0755, true) && !is_dir($dbDir)) {
+            throw new RuntimeException("DB directory missing and could not be created: {$dbDir}");
+        }
+    }
+
+    if (!is_writable($dbDir)) {
+        $perms = fileperms($dbDir);
+        $permOctal = $perms !== false ? substr(sprintf('%o', $perms), -4) : 'n/a';
+        $ownerId = @fileowner($dbDir);
+        $groupId = @filegroup($dbDir);
+        $owner = 'n/a';
+        if ($ownerId !== false) {
+            $ownerDetails = function_exists('posix_getpwuid') ? posix_getpwuid($ownerId) : null;
+            $owner = $ownerDetails['name'] ?? (string)$ownerId;
+        }
+        $group = 'n/a';
+        if ($groupId !== false) {
+            $groupDetails = function_exists('posix_getgrgid') ? posix_getgrgid($groupId) : null;
+            $group = $groupDetails['name'] ?? (string)$groupId;
+        }
+        throw new RuntimeException("DB directory is not writable: {$dbDir} (perms={$permOctal}, owner={$owner}, group={$group})");
+    }
+
+    try {
+        $pdo = new PDO('sqlite:' . $dbPath);
+    } catch (PDOException $e) {
+        throw new RuntimeException("SQLite open failed at {$dbPath} (dir: {$dbDir}): " . $e->getMessage(), 0, $e);
+    }
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->exec('PRAGMA foreign_keys = ON');
 
