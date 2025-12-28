@@ -52,6 +52,7 @@
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
     textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 12px; }
   </style>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
   <div class="wrap">
@@ -64,6 +65,15 @@
     <div class="row">
       <div class="card">
         <div id="board" aria-label="Chess board"></div>
+        <div style="margin-top:12px;">
+  <div
+    class="cf-turnstile"
+    data-sitekey="<?= htmlspecialchars(TURNSTILE_SITE_KEY ?? '', ENT_QUOTES) ?>"
+    data-callback="onTurnstileSuccess"
+    data-expired-callback="onTurnstileExpired"
+    data-error-callback="onTurnstileError"
+  ></div>
+</div>
         <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
           <button id="btnRefresh">Refresh</button>
           <button id="btnSubmit" disabled>Submit move</button>
