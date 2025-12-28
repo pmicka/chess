@@ -72,7 +72,7 @@ $turnstileToken = trim(
     ?? ''
 );
 $fen = trim($data['fen'] ?? '');
-$pgn = trim($data['pgn'] ?? '');
+$pgn = trim(strip_pgn_headers($data['pgn'] ?? ''));
 $lastMoveSan = trim($data['last_move_san'] ?? '');
 
 if ($turnstileToken === '') {
@@ -236,31 +236,9 @@ try {
     $updatedGame['id'] = (int)$updatedGame['id'];
 
     // Email host the single-use link. DB changes are already committed.
-    $link = BASE_URL . '/my_move.php?token=' . urlencode($hostToken);
-    $subject = 'Your turn — Me vs the World Chess';
-    $body = "Game ID: {$updatedGame['id']}\n"
-        . "Last visitor move: {$lastMoveSan}\n"
-        . "Link: {$link}\n"
-        . "Token expires at: " . ($expiresAt instanceof DateTimeInterface ? $expiresAt->format('Y-m-d H:i:s T') : 'n/a') . "\n";
-
-    $emailHeaders = 'From: ' . MAIL_FROM . "\r\n";
-
-    try {
-        $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
-        if ($mailSent === false) {
-            $warning = 'Email failed';
-        }
-    } catch (Throwable $mailErr) {
-        $warning = 'Email failed';
-    }
-
-    if ($warning !== null) {
-        $logLine = sprintf(
-            "[%s] Failed to send host turn email for game_id=%d\n",
-            datetime_utc()->format('Y-m-d H:i:s'),
-            $updatedGame['id']
-        );
-        @file_put_contents(__DIR__ . '/../data/email.log', $logLine, FILE_APPEND);
+    $emailResult = send_host_turn_email((int)$updatedGame['id'], $hostToken, $expiresAt, $lastMoveSan);
+    if (($emailResult['ok'] ?? false) !== true) {
+        $warning = $emailResult['warning'] ?? 'Email failed';
     }
 
     $response = [

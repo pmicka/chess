@@ -42,20 +42,15 @@ if (!is_array($data)) {
     $data = [];
 }
 
+$action = strtolower(trim($data['action'] ?? 'submit')) ?: 'submit';
 $tokenValue = trim($data['token'] ?? '');
 $fen = trim($data['fen'] ?? '');
-$pgn = trim($data['pgn'] ?? '');
+$pgn = trim(strip_pgn_headers($data['pgn'] ?? ''));
 $move = trim($data['move'] ?? '');
 
 if ($tokenValue === '') {
     http_response_code(400);
     echo json_encode(['error' => 'Token missing']);
-    exit;
-}
-
-if ($fen === '' || $pgn === '' || $move === '') {
-    http_response_code(400);
-    echo json_encode(['error' => 'Missing required fields (fen, pgn, move).']);
     exit;
 }
 
@@ -70,6 +65,62 @@ try {
         $db->rollBack();
         http_response_code(401);
         echo json_encode(['error' => 'Invalid or expired token']);
+        exit;
+    }
+
+    if ($action === 'resend') {
+        $stmt = $db->prepare("
+            SELECT id, host_color, visitor_color, turn_color, status, last_move_san
+            FROM games
+            WHERE id = :id
+            LIMIT 1
+        ");
+        $stmt->execute([':id' => $tokenRow['game_id']]);
+        $game = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$game) {
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'No active game found.']);
+            exit;
+        }
+
+        if (($game['status'] ?? '') !== 'active') {
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Game is not active.']);
+            exit;
+        }
+
+        if ($game['turn_color'] !== $game['host_color']) {
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'It is not the host turn.']);
+            exit;
+        }
+
+        $db->commit();
+
+        $expiry = $tokenRow['expires_at_dt'] ?? null;
+        $emailResult = send_host_turn_email((int)$game['id'], $tokenValue, $expiry, $game['last_move_san'] ?? 'n/a');
+
+        $response = [
+            'ok' => ($emailResult['ok'] ?? false) === true,
+            'message' => ($emailResult['ok'] ?? false) === true ? 'Sent.' : 'Failed.',
+        ];
+
+        if (($emailResult['ok'] ?? false) !== true && !empty($emailResult['warning'])) {
+            $response['error'] = $emailResult['warning'];
+        }
+
+        echo json_encode($response);
+        exit;
+    }
+
+    if ($fen === '' || $pgn === '' || $move === '') {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing required fields (fen, pgn, move).']);
         exit;
     }
 
