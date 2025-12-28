@@ -72,7 +72,6 @@ $turnstileToken = trim(
     ?? ''
 );
 $fen = trim($data['fen'] ?? '');
-$pgn = trim(strip_pgn_headers($data['pgn'] ?? ''));
 $lastMoveSan = trim($data['last_move_san'] ?? '');
 
 if ($turnstileToken === '') {
@@ -81,9 +80,9 @@ if ($turnstileToken === '') {
     exit;
 }
 
-if ($fen === '' || $pgn === '' || $lastMoveSan === '') {
+if ($fen === '' || $lastMoveSan === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing required fields (fen, pgn, last_move_san).']);
+    echo json_encode(['error' => 'Missing required fields (fen, last_move_san).']);
     exit;
 }
 
@@ -153,7 +152,7 @@ try {
 
     // Load the latest active game.
     $stmt = $db->query("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status, pgn
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, pgn, fen
         FROM games
         WHERE status = 'active'
         ORDER BY updated_at DESC
