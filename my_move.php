@@ -161,7 +161,7 @@
 
         const moves = game.moves({square: selectedSquare, verbose: true});
         moves.forEach(m => {
-          const hint = boardEl.querySelector(\`.sq[data-square="${m.to}"]`);
+          const hint = boardEl.querySelector(`.sq[data-square="${m.to}"]`);
           if (hint) hint.classList.add('hint');
         });
       }
@@ -211,7 +211,7 @@
       }
 
       pendingMove = { from: move.from, to: move.to, promotion: move.promotion || 'q', san: move.san };
-      movePreview.textContent = \`\${move.san} (\${move.from}->\${move.to})\`;
+      movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
       btnSubmit.disabled = false;
       selectedSquare = null;
       renderBoard();
@@ -240,7 +240,7 @@
 
       game.load(state.fen);
 
-      debugBox.textContent = \`game_id=\${state.id} status=\${state.status} updated_at=\${state.updated_at}\`;
+      debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
       renderBoard();
 
       statusMsg.textContent = isYourTurn() ? 'Your turn.' : 'Waiting on visitors.';
