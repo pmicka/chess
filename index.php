@@ -63,8 +63,33 @@ require_once __DIR__ . '/config.php';
     .ok { color: #0a7d2c; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
     textarea { width: 100%; min-height: 90px; font-family: ui-monospace, monospace; font-size: 12px; }
+    .copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .copy-note { min-width: 70px; color: #0a7d2c; }
     .banner { display: none; margin-top: 10px; padding: 10px; background: #fff4ce; border: 1px solid #f0ad4e; border-radius: 8px; }
     .banner.show { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .status-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ddd;
+      border-top-color: #111;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    .spinner.show { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error-block {
+      display: none;
+      margin-top: 10px;
+      padding: 12px;
+      background: #fff0f0;
+      border: 1px solid #f0b3b3;
+      border-radius: 8px;
+      color: #a0001f;
+      white-space: pre-line;
+    }
+    .error-block.show { display: block; }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
@@ -95,7 +120,10 @@ require_once __DIR__ . '/config.php';
         <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
           <button id="btnRefresh">Refresh</button>
           <button id="btnSubmit" disabled>Submit move</button>
-          <span id="statusMsg" class="muted"></span>
+          <div class="status-row" aria-live="polite">
+            <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+            <span id="statusMsg" class="muted"></span>
+          </div>
         </div>
         <p class="muted" style="margin-top:10px;">
           Selected move: <code id="movePreview">none</code>
@@ -104,14 +132,23 @@ require_once __DIR__ . '/config.php';
           <span>New server state available. Refresh to sync.</span>
           <button id="btnBannerRefresh">Refresh</button>
         </div>
+        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
       </div>
 
       <div class="card" style="flex:1; min-width: 320px;">
         <h3>Game State</h3>
         <p class="muted">FEN:</p>
         <textarea id="fenBox" readonly></textarea>
+        <div class="copy-row">
+          <button id="copyFenBtn">Copy FEN</button>
+          <span id="copyFenMsg" class="copy-note" aria-live="polite"></span>
+        </div>
         <p class="muted">PGN:</p>
         <textarea id="pgnBox" readonly></textarea>
+        <div class="copy-row">
+          <button id="copyPgnBtn">Copy PGN</button>
+          <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
+        </div>
         <p class="muted mono" id="debugBox"></p>
       </div>
     </div>
@@ -124,10 +161,16 @@ require_once __DIR__ . '/config.php';
     const btnRefresh = document.getElementById('btnRefresh');
     const btnSubmit = document.getElementById('btnSubmit');
     const statusMsg = document.getElementById('statusMsg');
+    const statusSpinner = document.getElementById('statusSpinner');
     const movePreview = document.getElementById('movePreview');
     const fenBox = document.getElementById('fenBox');
     const pgnBox = document.getElementById('pgnBox');
     const debugBox = document.getElementById('debugBox');
+    const copyFenBtn = document.getElementById('copyFenBtn');
+    const copyPgnBtn = document.getElementById('copyPgnBtn');
+    const copyFenMsg = document.getElementById('copyFenMsg');
+    const copyPgnMsg = document.getElementById('copyPgnMsg');
+    const errorBox = document.getElementById('errorBox');
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
@@ -153,6 +196,7 @@ require_once __DIR__ . '/config.php';
     let queuedServerState = null;
     let selectionIsStale = false;
     let pollHandle = null;
+    let submitting = false;
 
     const pieceToChar = (p) => {
       // Using simple unicode pieces. p: {type, color} from chess.js board()
@@ -245,6 +289,11 @@ require_once __DIR__ . '/config.php';
       movePreview.textContent = 'none';
       btnSubmit.disabled = true;
       updateHighlights();
+    }
+
+    function clearErrors() {
+      errorBox.textContent = '';
+      errorBox.classList.remove('show');
     }
 
     function updateHighlights() {
@@ -345,8 +394,7 @@ require_once __DIR__ . '/config.php';
 
     function ensureTokenPresent() {
       if (window.turnstileToken) return true;
-      statusMsg.textContent = 'Solve the CAPTCHA before submitting.';
-      statusMsg.className = 'error';
+      setStatus('Solve the CAPTCHA before submitting.', 'error');
       btnSubmit.disabled = true;
       return false;
     }
@@ -370,6 +418,23 @@ require_once __DIR__ . '/config.php';
       window.turnstileToken = null;
     }
 
+    function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
+      statusMsg.textContent = message;
+      statusMsg.className = tone;
+      statusSpinner.classList.toggle('show', showSpinner);
+    }
+
+    function setSubmittingState(isSubmitting) {
+      submitting = isSubmitting;
+      btnSubmit.disabled = true;
+      btnRefresh.disabled = isSubmitting;
+      btnBannerRefresh.disabled = isSubmitting;
+      statusSpinner.classList.toggle('show', isSubmitting);
+      if (!isSubmitting && pendingMove && !selectionIsStale) {
+        btnSubmit.disabled = false;
+      }
+    }
+
     function formatTimestamp(ts) {
       const d = new Date(ts);
       if (Number.isNaN(d.getTime())) return ts || '';
@@ -381,19 +446,16 @@ require_once __DIR__ . '/config.php';
       if (!state) return;
 
       if (state.status !== 'active') {
-        statusMsg.textContent = `Game is ${state.status || 'inactive'}.`;
-        statusMsg.className = 'muted';
+        setStatus(`Game is ${state.status || 'inactive'}.`, 'muted');
         boardEl.classList.add('locked');
         return;
       }
 
       if (isVisitorsTurn()) {
-        statusMsg.textContent = `Your turn (${visitorColor}). Solve CAPTCHA to submit.`;
-        statusMsg.className = 'ok';
+        setStatus(`Your turn (${visitorColor}). Solve CAPTCHA to submit.`, 'ok');
         boardEl.classList.remove('locked');
       } else {
-        statusMsg.textContent = `Waiting on host move (${hostColor}). Last updated: ${formatTimestamp(state.updated_at)}`;
-        statusMsg.className = 'muted';
+        setStatus(`Waiting on host move (${hostColor}). Last updated: ${formatTimestamp(state.updated_at)}`, 'muted');
         boardEl.classList.add('locked');
       }
     }
@@ -423,6 +485,7 @@ require_once __DIR__ . '/config.php';
       hostColor = state.you_color;
       queuedServerState = null;
       selectionIsStale = false;
+      clearErrors();
 
       visitorColorLabel.textContent = visitorColor;
       hostColorLabel.textContent = hostColor;
@@ -459,8 +522,7 @@ require_once __DIR__ . '/config.php';
       if (pendingMove && hasChanged && allowQueue) {
         queuedServerState = newState;
         selectionIsStale = true;
-        statusMsg.textContent = 'New server state available. Refresh to sync.';
-        statusMsg.className = 'muted';
+        setStatus('New server state available. Refresh to sync.', 'muted');
         btnSubmit.disabled = true;
         showUpdateBanner();
         return;
@@ -473,7 +535,7 @@ require_once __DIR__ . '/config.php';
     async function fetchState(options = {}) {
       const { resetSelection = true, allowQueue = false, silent = false } = options;
       if (!silent) {
-        statusMsg.textContent = 'Loading…';
+        setStatus('Loading…', 'muted', { showSpinner: true });
       }
 
       const res = await fetch('api/state.php', { cache: 'no-store' });
@@ -484,8 +546,7 @@ require_once __DIR__ . '/config.php';
     }
 
     function handleStateError(err) {
-      statusMsg.textContent = err.message || 'Failed to load state';
-      statusMsg.className = 'error';
+      setStatus(err.message || 'Failed to load state', 'error');
       boardEl.classList.add('locked');
     }
 
@@ -507,7 +568,10 @@ require_once __DIR__ . '/config.php';
     }
 
     // Load state on first render so visitors see the board immediately.
-    fetchState().then(startPolling).catch(handleStateError);
+    fetchState().then(() => {
+      clearErrors();
+      startPolling();
+    }).catch(handleStateError);
 
     btnRefresh.addEventListener('click', applyQueuedStateOrFetch);
     btnBannerRefresh.addEventListener('click', applyQueuedStateOrFetch);
@@ -522,23 +586,22 @@ require_once __DIR__ . '/config.php';
         latestKnownFingerprint &&
         selectionStateFingerprint !== latestKnownFingerprint
       ) {
-        statusMsg.textContent = 'Server state changed. Refresh before submitting.';
-        statusMsg.className = 'error';
+        setStatus('Server state changed. Refresh before submitting.', 'error');
         btnSubmit.disabled = true;
         showUpdateBanner();
         return;
       }
 
       if (selectionIsStale || queuedServerState) {
-        statusMsg.textContent = 'Server state changed. Refresh before submitting.';
-        statusMsg.className = 'error';
+        setStatus('Server state changed. Refresh before submitting.', 'error');
         btnSubmit.disabled = true;
         showUpdateBanner();
         return;
       }
 
-      btnSubmit.disabled = true;
-      statusMsg.textContent = 'Submitting...';
+      clearErrors();
+      setSubmittingState(true);
+      setStatus('Submitting…', 'muted', { showSpinner: true });
 
       try {
         const res = await fetch('api/visitor_move.php', {
@@ -556,14 +619,33 @@ require_once __DIR__ . '/config.php';
           })
         });
 
-        const json = await res.json();
-
-        if (!res.ok || json.error) {
-          throw new Error(json.error || 'Move rejected');
+        let json = {};
+        try {
+          json = await res.json();
+        } catch (parseErr) {
+          json = {};
         }
 
-        statusMsg.textContent = 'Move accepted. Waiting on host.';
-        statusMsg.className = 'muted';
+        const readableErrors = [];
+        if (json && typeof json === 'object') {
+          if (json.error) readableErrors.push(String(json.error));
+          if (json.turnstile_errors) {
+            if (Array.isArray(json.turnstile_errors)) {
+              json.turnstile_errors.forEach((msg) => readableErrors.push(String(msg)));
+            } else {
+              readableErrors.push(String(json.turnstile_errors));
+            }
+          }
+        }
+
+        if (!res.ok || json.error) {
+          const errorMessage = readableErrors.length ? readableErrors[0] : 'Move rejected';
+          const displayErrors = readableErrors.length ? readableErrors : [errorMessage];
+          showErrors(displayErrors);
+          throw new Error(errorMessage);
+        }
+
+        setStatus('Move accepted. Waiting on host.', 'ok');
         pendingMove = null;
         resetTurnstile();
 
@@ -571,12 +653,53 @@ require_once __DIR__ . '/config.php';
         await fetchState();
 
       } catch (err) {
-        statusMsg.textContent = err.message;
-        statusMsg.className = 'error';
+        setStatus(err.message || 'Move rejected', 'error');
         resetTurnstile();
-        btnSubmit.disabled = false;
+        setSubmittingState(false);
+        return;
       }
+
+      setSubmittingState(false);
     });
+
+    function showErrors(errors) {
+      if (!errors || !errors.length) {
+        clearErrors();
+        return;
+      }
+      errorBox.textContent = errors.map((line) => `• ${line}`).join('\n');
+      errorBox.classList.add('show');
+    }
+
+    function clearCopyNotes() {
+      copyFenMsg.textContent = '';
+      copyPgnMsg.textContent = '';
+    }
+
+    async function copyText(value, targetMsgEl) {
+      clearCopyNotes();
+      const text = value || '';
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const temp = document.createElement('textarea');
+          temp.value = text;
+          temp.style.position = 'fixed';
+          temp.style.opacity = '0';
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand('copy');
+          document.body.removeChild(temp);
+        }
+        targetMsgEl.textContent = 'Copied';
+      } catch (err) {
+        targetMsgEl.textContent = 'Copy failed';
+      }
+    }
+
+    copyFenBtn.addEventListener('click', () => copyText(fenBox.value, copyFenMsg));
+    copyPgnBtn.addEventListener('click', () => copyText(pgnBox.value, copyPgnMsg));
 
   </script>
 </body>
