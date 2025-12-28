@@ -15,20 +15,20 @@
   const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
   const PIECE_ASSETS = {
     w: {
-      p: '/assets/pieces/lichess/wP.svg',
-      n: '/assets/pieces/lichess/wN.svg',
-      b: '/assets/pieces/lichess/wB.svg',
-      r: '/assets/pieces/lichess/wR.svg',
-      q: '/assets/pieces/lichess/wQ.svg',
-      k: '/assets/pieces/lichess/wK.svg',
+      p: 'assets/pieces/lichess/wP.svg',
+      n: 'assets/pieces/lichess/wN.svg',
+      b: 'assets/pieces/lichess/wB.svg',
+      r: 'assets/pieces/lichess/wR.svg',
+      q: 'assets/pieces/lichess/wQ.svg',
+      k: 'assets/pieces/lichess/wK.svg',
     },
     b: {
-      p: '/assets/pieces/lichess/bP.svg',
-      n: '/assets/pieces/lichess/bN.svg',
-      b: '/assets/pieces/lichess/bB.svg',
-      r: '/assets/pieces/lichess/bR.svg',
-      q: '/assets/pieces/lichess/bQ.svg',
-      k: '/assets/pieces/lichess/bK.svg',
+      p: 'assets/pieces/lichess/bP.svg',
+      n: 'assets/pieces/lichess/bN.svg',
+      b: 'assets/pieces/lichess/bB.svg',
+      r: 'assets/pieces/lichess/bR.svg',
+      q: 'assets/pieces/lichess/bQ.svg',
+      k: 'assets/pieces/lichess/bK.svg',
     },
   };
   const PIECE_ALT = {
