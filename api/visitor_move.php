@@ -28,6 +28,20 @@
  * - Email host a link to /my_move.php?token=...
  */
 
+// Parse JSON body if present
+$raw = file_get_contents('php://input');
+$data = json_decode($raw, true);
+
+// Fallback to form POST (just in case)
+if (!is_array($data)) {
+    $data = $_POST;
+}
+
+$token =
+    $data['turnstile_token']
+    ?? $data['cf-turnstile-response']
+    ?? '';
+
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../db.php';
