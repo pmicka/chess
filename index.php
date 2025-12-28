@@ -55,6 +55,7 @@ require_once __DIR__ . '/config.php';
     .sq.hint { box-shadow: inset 0 0 0 4px rgba(10,132,255,.35); }
     .sq.last { box-shadow: inset 0 0 0 4px rgba(255, 215, 0, 0.9); }
     #board.locked .sq { pointer-events: none; }
+    .piece-svg { width: 80%; height: 80%; pointer-events: none; }
     button { padding: 10px 14px; border-radius: 10px; border: 1px solid #333; background: #111; color: #fff; cursor: pointer; }
     button:disabled { opacity: .4; cursor: not-allowed; }
     code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
@@ -198,14 +199,16 @@ require_once __DIR__ . '/config.php';
     let pollHandle = null;
     let submitting = false;
 
-    const pieceToChar = (p) => {
-      // Using simple unicode pieces. p: {type, color} from chess.js board()
-      const map = {
-        'p':'♟','r':'♜','n':'♞','b':'♝','q':'♛','k':'♚',
-        'P':'♙','R':'♖','N':'♘','B':'♗','Q':'♕','K':'♔'
-      };
-      const key = (p.color === 'w') ? p.type.toUpperCase() : p.type;
-      return map[key] || '?';
+    const renderPiece = (p) => {
+      if (!p) return '';
+      const isWhite = p.color === 'w';
+      const fill = isWhite ? '#f7f7f7' : '#2f2f2f';
+      const stroke = '#5a5a5a';
+      return `
+        <svg class="piece-svg" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="36" fill="${fill}" stroke="${stroke}" stroke-width="4"></circle>
+        </svg>
+      `;
     };
 
     function algebraic(file, rank) { return file + rank; }
@@ -271,7 +274,7 @@ require_once __DIR__ . '/config.php';
           const div = document.createElement('div');
           div.className = 'sq ' + (((fileIndex + rank) % 2 === 0) ? 'light' : 'dark');
           div.dataset.square = sq;
-          div.textContent = piece ? pieceToChar(piece) : '';
+          div.innerHTML = renderPiece(piece);
 
           div.addEventListener('click', () => onSquareClick(sq));
           boardEl.appendChild(div);

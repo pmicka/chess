@@ -107,6 +107,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     .dark  { background: #b58863; }
     .sq.pick { outline: 3px solid #0a84ff; outline-offset: -3px; }
     .sq.hint { box-shadow: inset 0 0 0 4px rgba(10,132,255,.35); }
+    .piece-svg { width: 80%; height: 80%; pointer-events: none; }
     button { padding: 10px 14px; border-radius: 10px; border: 1px solid #333; background: #111; color: #fff; cursor: pointer; }
     button:disabled { opacity: .4; cursor: not-allowed; }
     code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
@@ -186,13 +187,16 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     let selectedSquare = null;
     let pendingMove = null; // {from,to,promotion,san}
 
-    const pieceToChar = (p) => {
-      const map = {
-       'p':'p','r':'r','n':'n','b':'b','q':'q','k':'k',
-       'P':'P','R':'R','N':'N','B':'B','Q':'Q','K':'K'
-      };
-      const key = (p.color === 'w') ? p.type.toUpperCase() : p.type;
-      return map[key] || '?';
+    const renderPiece = (p) => {
+      if (!p) return '';
+      const isWhite = p.color === 'w';
+      const fill = isWhite ? '#f7f7f7' : '#2f2f2f';
+      const stroke = '#5a5a5a';
+      return `
+        <svg class="piece-svg" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="36" fill="${fill}" stroke="${stroke}" stroke-width="4"></circle>
+        </svg>
+      `;
     };
 
     function algebraic(file, rank) { return file + rank; }
@@ -256,7 +260,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
           const div = document.createElement('div');
           div.className = 'sq ' + (((fileIndex + rank) % 2 === 0) ? 'light' : 'dark');
           div.dataset.square = sq;
-          div.textContent = piece ? pieceToChar(piece) : '';
+          div.innerHTML = renderPiece(piece);
 
           div.addEventListener('click', () => onSquareClick(sq));
           boardEl.appendChild(div);
