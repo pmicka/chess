@@ -112,6 +112,7 @@ require_once __DIR__ . '/config.php';
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
 
+    window.turnstileToken = null;
     const game = new Chess();
     let state = null;
 
@@ -242,6 +243,38 @@ require_once __DIR__ . '/config.php';
       renderBoard();
     }
 
+    function ensureTokenPresent() {
+      if (window.turnstileToken) return true;
+      statusMsg.textContent = 'Solve the CAPTCHA before submitting.';
+      statusMsg.className = 'error';
+      btnSubmit.disabled = true;
+      return false;
+    }
+
+    function clearTurnstileToken(message) {
+      window.turnstileToken = null;
+      if (message) {
+        statusMsg.textContent = message;
+        statusMsg.className = 'error';
+      }
+      btnSubmit.disabled = true;
+    }
+
+    function onTurnstileSuccess(token) {
+      window.turnstileToken = token;
+      if (pendingMove && isVisitorsTurn()) {
+        btnSubmit.disabled = false;
+      }
+    }
+
+    function onTurnstileExpired() {
+      clearTurnstileToken('CAPTCHA expired. Please try again.');
+    }
+
+    function onTurnstileError() {
+      clearTurnstileToken('CAPTCHA error. Please retry.');
+    }
+
     async function fetchState() {
       statusMsg.textContent = 'Loading…';
       clearSelection();
@@ -287,6 +320,7 @@ require_once __DIR__ . '/config.php';
 
 btnSubmit.addEventListener('click', async () => {
   if (!pendingMove || !state) return;
+  if (!ensureTokenPresent()) return;
 
   btnSubmit.disabled = true;
   statusMsg.textContent = 'Submitting...';
@@ -300,7 +334,8 @@ btnSubmit.addEventListener('click', async () => {
       body: JSON.stringify({
         fen: game.fen(),
         pgn: game.pgn(),
-        last_move_san: pendingMove.san
+        last_move_san: pendingMove.san,
+        turnstile_token: window.turnstileToken
       })
     });
 
@@ -312,6 +347,7 @@ btnSubmit.addEventListener('click', async () => {
 
     statusMsg.textContent = 'Move accepted. Waiting on host.';
     pendingMove = null;
+    window.turnstileToken = null;
 
     // Refresh canonical state from server
     await fetchState();
@@ -319,6 +355,7 @@ btnSubmit.addEventListener('click', async () => {
   } catch (err) {
     statusMsg.textContent = err.message;
     statusMsg.className = 'error';
+    window.turnstileToken = null;
     btnSubmit.disabled = false;
   }
 });
