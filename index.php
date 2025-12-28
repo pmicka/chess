@@ -121,6 +121,10 @@ require_once __DIR__ . '/config.php';
     }
     .error-block.show { display: block; }
     .turnstile-wrap { margin-top: 12px; }
+    #board { transform-origin: center center; }
+    .board-shell.flipped #board { transform: rotate(180deg); }
+    .board-shell.flipped .sq,
+    .board-shell.flipped .label { transform: rotate(180deg); }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
@@ -206,6 +210,7 @@ require_once __DIR__ . '/config.php';
     const turnstileWidget = document.querySelector('.cf-turnstile');
     const updateBanner = document.getElementById('updateBanner');
     const btnBannerRefresh = document.getElementById('btnBannerRefresh');
+    const boardShell = document.querySelector('.board-shell');
     boardEl.classList.add('locked');
 
     window.turnstileToken = null;
@@ -241,27 +246,13 @@ require_once __DIR__ . '/config.php';
 
     function algebraic(file, rank) { return file + rank; }
 
-    function getLocalColor() {
-      return visitorColor || 'black';
-    }
-
-    function getFileOrder() {
-      const files = ['a','b','c','d','e','f','g','h'];
-      return getLocalColor() === 'black' ? [...files].reverse() : files;
-    }
-
-    function getRankOrder() {
-      const ranks = [1,2,3,4,5,6,7,8];
-      return getLocalColor() === 'black' ? ranks : [...ranks].reverse();
-    }
-
     function renderBoard() {
       boardEl.innerHTML = '';
 
       const board = game.board();
       const filesBase = ['a','b','c','d','e','f','g','h'];
-      const files = getFileOrder();
-      const ranks = getRankOrder();
+      const files = filesBase;
+      const ranks = [8,7,6,5,4,3,2,1];
 
       for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
@@ -310,6 +301,12 @@ require_once __DIR__ . '/config.php';
       }
 
       updateHighlights();
+    }
+
+    function setBoardOrientation() {
+      if (!boardShell) return;
+      const shouldFlip = visitorColor === 'black';
+      boardShell.classList.toggle('flipped', shouldFlip);
     }
 
     function clearSelection() {
@@ -525,11 +522,19 @@ require_once __DIR__ . '/config.php';
       fenBox.value = state.fen;
       pgnBox.value = state.pgn;
 
-      game.load(state.fen);
+      try {
+        game.load(state.fen);
+      } catch (err) {
+        setStatus('Invalid FEN from server. Refresh later.', 'error');
+        boardEl.classList.add('locked');
+        showErrors(['Invalid FEN from server']);
+        return;
+      }
       lastMoveSquares = deriveLastMoveSquares(state);
 
       debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
       renderBoard();
+      setBoardOrientation();
 
       updateStatusMessage();
 
@@ -641,12 +646,13 @@ require_once __DIR__ . '/config.php';
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            fen: game.fen(),
-            pgn: game.pgn(),
             last_move_san: pendingMove.san,
-            last_move_from: pendingMove.from,
-            last_move_to: pendingMove.to,
-            turnstile_token: window.turnstileToken
+            from: pendingMove.from,
+            to: pendingMove.to,
+            promotion: pendingMove.promotion || 'q',
+            last_known_updated_at: state.updated_at,
+            turnstile_token: window.turnstileToken,
+            client_fen: game.fen()
           })
         });
 

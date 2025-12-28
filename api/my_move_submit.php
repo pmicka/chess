@@ -44,9 +44,18 @@ if (!is_array($data)) {
 
 $action = strtolower(trim($data['action'] ?? 'submit')) ?: 'submit';
 $tokenValue = trim($data['token'] ?? '');
-$fen = trim($data['fen'] ?? '');
-$pgn = trim(strip_pgn_headers($data['pgn'] ?? ''));
+$from = strtolower(trim($data['from'] ?? ''));
+$to = strtolower(trim($data['to'] ?? ''));
+$promotion = strtolower(trim($data['promotion'] ?? 'q'));
 $move = trim($data['move'] ?? '');
+$lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
+$clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
+
+if (isset($data['fen']) || isset($data['pgn'])) {
+    http_response_code(400);
+    echo json_encode(['error' => 'FEN/PGN are server-managed. Submit coordinates only.']);
+    exit;
+}
 
 if ($tokenValue === '') {
     http_response_code(400);
@@ -117,15 +126,22 @@ try {
         exit;
     }
 
-    if ($fen === '' || $pgn === '' || $move === '') {
+    if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
         $db->rollBack();
         http_response_code(400);
-        echo json_encode(['error' => 'Missing required fields (fen, pgn, move).']);
+        echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
+        exit;
+    }
+
+    if ($move === '') {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'Move notation is required.']);
         exit;
     }
 
     $stmt = $db->prepare("
-        SELECT id, host_color, visitor_color, turn_color, status, pgn
+        SELECT id, host_color, visitor_color, turn_color, status, pgn, fen, updated_at
         FROM games
         WHERE id = :id
         LIMIT 1
@@ -154,7 +170,23 @@ try {
         exit;
     }
 
-    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['host_color'], $move, $fen);
+    if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
+        $db->rollBack();
+        http_response_code(409);
+        echo json_encode(['error' => 'Server state changed. Refresh and try again.']);
+        exit;
+    }
+
+    try {
+        $newFen = apply_move_to_fen($game['fen'], $from, $to, $promotion, $game['turn_color']);
+    } catch (Throwable $e) {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'Illegal move or invalid coordinates.']);
+        exit;
+    }
+
+    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['host_color'], $move, $newFen);
 
     // Flip turn to visitors after saving the host move.
     $nextTurn = $game['host_color'] === 'white' ? 'black' : 'white';
@@ -170,7 +202,7 @@ try {
     ");
 
     $update->execute([
-        ':fen' => $fen,
+        ':fen' => $newFen,
         ':pgn' => $newPgn,
         ':move' => $move,
         ':id' => $game['id'],
@@ -187,6 +219,13 @@ try {
     $db->prepare("DELETE FROM locks WHERE game_id = :id")->execute([':id' => $game['id']]);
 
     $db->commit();
+
+    error_log(sprintf(
+        'my_move_submit write game=%d fen_len=%d client_fen_len=%s',
+        $game['id'],
+        strlen($newFen),
+        $clientFen !== null ? strlen($clientFen) : 'n/a'
+    ));
 
     echo json_encode([
         'ok' => true,

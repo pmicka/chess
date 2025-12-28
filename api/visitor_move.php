@@ -31,6 +31,7 @@
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../db.php';
+error_log('visitor_move db_path=' . DB_PATH);
 
 // Accept only POST with JSON payload.
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -71,9 +72,18 @@ $turnstileToken = trim(
     ?? $data['cf-turnstile-response']
     ?? ''
 );
-$fen = trim($data['fen'] ?? '');
-$pgn = trim(strip_pgn_headers($data['pgn'] ?? ''));
+$from = strtolower(trim($data['from'] ?? ''));
+$to = strtolower(trim($data['to'] ?? ''));
+$promotion = strtolower(trim($data['promotion'] ?? 'q'));
 $lastMoveSan = trim($data['last_move_san'] ?? '');
+$lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
+$clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
+
+if (isset($data['fen']) || isset($data['pgn'])) {
+    http_response_code(400);
+    echo json_encode(['error' => 'FEN/PGN are server-managed. Submit coordinates only.']);
+    exit;
+}
 
 if ($turnstileToken === '') {
     http_response_code(400);
@@ -81,9 +91,9 @@ if ($turnstileToken === '') {
     exit;
 }
 
-if ($fen === '' || $pgn === '' || $lastMoveSan === '') {
+if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing required fields (fen, pgn, last_move_san).']);
+    echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
     exit;
 }
 
@@ -153,7 +163,7 @@ try {
 
     // Load the latest active game.
     $stmt = $db->query("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status, pgn
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, pgn, fen, updated_at
         FROM games
         WHERE status = 'active'
         ORDER BY updated_at DESC
@@ -172,6 +182,13 @@ try {
         $db->rollBack();
         http_response_code(400);
         echo json_encode(['error' => 'It is not the visitor turn.']);
+        exit;
+    }
+
+    if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
+        $db->rollBack();
+        http_response_code(409);
+        echo json_encode(['error' => 'Server state changed. Refresh and try again.']);
         exit;
     }
 
@@ -197,7 +214,20 @@ try {
         exit;
     }
 
-    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['turn_color'], $lastMoveSan, $fen);
+    try {
+        $newFen = apply_move_to_fen($game['fen'], $from, $to, $promotion, $game['turn_color']);
+    } catch (Throwable $e) {
+        $db->rollBack();
+        http_response_code(400);
+        echo json_encode(['error' => 'Illegal move or invalid coordinates.']);
+        exit;
+    }
+
+    if ($lastMoveSan === '') {
+        $lastMoveSan = "{$from}-{$to}";
+    }
+
+    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['turn_color'], $lastMoveSan, $newFen);
 
     // Save visitor move and flip turn back to host (you_color).
     $update = $db->prepare("
@@ -211,11 +241,18 @@ try {
     ");
 
     $update->execute([
-        ':fen' => $fen,
+        ':fen' => $newFen,
         ':pgn' => $newPgn,
         ':last_move_san' => $lastMoveSan,
         ':id' => $game['id'],
     ]);
+
+    error_log(sprintf(
+        'visitor_move write game=%d fen_len=%d client_fen_len=%s',
+        $game['id'],
+        strlen($newFen),
+        $clientFen !== null ? strlen($clientFen) : 'n/a'
+    ));
 
     $tokenInfo = ensure_host_move_token($db, (int)$game['id']);
     $hostToken = $tokenInfo['token'];

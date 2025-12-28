@@ -160,6 +160,10 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     .spinner.show { display: inline-block; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .extra-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; align-items: center; font-size: 14px; }
+    #board { transform-origin: center center; }
+    .board-shell.flipped #board { transform: rotate(180deg); }
+    .board-shell.flipped .sq,
+    .board-shell.flipped .label { transform: rotate(180deg); }
   </style>
 </head>
 <body>
@@ -248,6 +252,7 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
     const errorBanner = document.getElementById('errorBanner');
+    const boardShell = document.querySelector('.board-shell');
     const hostToken = window.hostToken || '';
 
     const DEBUG = false;
@@ -284,27 +289,13 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
 
     function algebraic(file, rank) { return file + rank; }
 
-    function getLocalColor() {
-      return youColor || 'white';
-    }
-
-    function getFileOrder() {
-      const files = ['a','b','c','d','e','f','g','h'];
-      return getLocalColor() === 'black' ? [...files].reverse() : files;
-    }
-
-    function getRankOrder() {
-      const ranks = [1,2,3,4,5,6,7,8];
-      return getLocalColor() === 'black' ? ranks : [...ranks].reverse();
-    }
-
     function renderBoard() {
       boardEl.innerHTML = '';
 
       const board = game.board();
       const filesBase = ['a','b','c','d','e','f','g','h'];
-      const files = getFileOrder();
-      const ranks = getRankOrder();
+      const files = filesBase;
+      const ranks = [8,7,6,5,4,3,2,1];
 
       for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
@@ -351,6 +342,12 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       }
 
       updateHighlights();
+    }
+
+    function setBoardOrientation() {
+      if (!boardShell) return;
+      const shouldFlip = youColor === 'black';
+      boardShell.classList.toggle('flipped', shouldFlip);
     }
 
     function clearSelection() {
@@ -512,11 +509,16 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
         }
 
         if (!loadedFromPgn) {
-          game.load(state.fen);
+          try {
+            game.load(state.fen);
+          } catch (err) {
+            throw new Error('Invalid FEN from server');
+          }
         }
 
         debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
         renderBoard();
+        setBoardOrientation();
 
         lastUpdatedTs = state.updated_at || null;
         updateLastUpdated(formatTimestamp(lastUpdatedTs), 'muted');
@@ -551,10 +553,13 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       setStatus('Submitting…', 'muted', { showSpinner: true });
 
       const payload = {
-        fen: game.fen(),
-        pgn: game.pgn(),
+        from: pendingMove.from,
+        to: pendingMove.to,
+        promotion: pendingMove.promotion || 'q',
         move: pendingMove.san,
         token: hostToken,
+        last_known_updated_at: lastUpdatedTs,
+        client_fen: game.fen(),
       };
 
       try {
