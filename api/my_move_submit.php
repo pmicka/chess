@@ -45,7 +45,6 @@ if (!is_array($data)) {
 $action = strtolower(trim($data['action'] ?? 'submit')) ?: 'submit';
 $tokenValue = trim($data['token'] ?? '');
 $fen = trim($data['fen'] ?? '');
-$pgn = trim(strip_pgn_headers($data['pgn'] ?? ''));
 $move = trim($data['move'] ?? '');
 
 if ($tokenValue === '') {
@@ -117,15 +116,15 @@ try {
         exit;
     }
 
-    if ($fen === '' || $pgn === '' || $move === '') {
+    if ($fen === '' || $move === '') {
         $db->rollBack();
         http_response_code(400);
-        echo json_encode(['error' => 'Missing required fields (fen, pgn, move).']);
+        echo json_encode(['error' => 'Missing required fields (fen, move).']);
         exit;
     }
 
     $stmt = $db->prepare("
-        SELECT id, host_color, visitor_color, turn_color, status, pgn
+        SELECT id, host_color, visitor_color, turn_color, status, pgn, fen
         FROM games
         WHERE id = :id
         LIMIT 1
