@@ -446,7 +446,8 @@ $tokenExpiresDisplay = ($tokenRow['expires_at_dt'] instanceof DateTimeInterface)
       btnRefresh.disabled = true;
 
       try {
-        const res = await fetch('api/state.php', { cache: 'no-store' });
+        const query = hostToken ? `?token=${encodeURIComponent(hostToken)}` : '';
+        const res = await fetch(`api/state.php${query}`, { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed to load state');
         const json = await res.json();
 
