@@ -22,6 +22,7 @@
  * - Ending a game starts a new one and flips host color for the next game.
  */
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/lib/score.php';
 
 log_db_path_info('my_move.php');
 
@@ -75,6 +76,14 @@ $tokenIsValid = (bool)$tokenRow;
 $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     ? $tokenRow['expires_at_dt']->format('Y-m-d H:i:s T')
     : null;
+
+$scoreTotals = score_load();
+$scoreLineText = sprintf(
+    'overall: host %d · world %d · draws %d',
+    $scoreTotals['host_wins'] ?? 0,
+    $scoreTotals['world_wins'] ?? 0,
+    $scoreTotals['draws'] ?? 0
+);
 
 ?>
 <!doctype html>
@@ -150,6 +159,7 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
     .error { color: #b00020; }
     .ok { color: #0a7d2c; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .score-line { font-size: 12px; color: #666; margin-top: 6px; }
     textarea { width: 100%; min-height: 96px; font-family: ui-monospace, monospace; font-size: 12px; border-radius: 10px; border: 1px solid var(--border); padding: 10px; background: #f9fafb; }
     .copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
     .copy-note { min-width: 70px; color: #0a7d2c; }
@@ -302,6 +312,7 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
           <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
         </div>
         <p class="muted mono" id="debugBox"></p>
+        <p class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
       </div>
     </div>
   </div>

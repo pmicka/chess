@@ -14,6 +14,7 @@ function respond(int $status, array $payload): void
 
 try {
     require_once __DIR__ . '/../db.php';
+    require_once __DIR__ . '/../lib/score.php';
 } catch (Throwable $e) {
     respond(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
 }
@@ -72,7 +73,29 @@ try {
         respond(400, ['ok' => false, 'error' => 'Game is not over yet.', 'code' => 'not_over']);
     }
 
+    $resultLabel = null;
+    if ($isOver) {
+        $hostColor = strtolower((string)($game['host_color'] ?? ''));
+        $winner = $status['winner'] ?? null;
+        $reason = $status['reason'] ?? null;
+
+        if ($winner === 'w' || $winner === 'b') {
+            $hostCode = $hostColor === 'white' ? 'w' : 'b';
+            $resultLabel = $winner === $hostCode ? 'host' : 'world';
+        } elseif ($reason === 'draw' || $reason === 'stalemate') {
+            $resultLabel = 'draw';
+        }
+    }
+
     finish_game($db, $gameId);
+
+    if ($resultLabel !== null) {
+        try {
+            score_increment($resultLabel, $gameId);
+        } catch (Throwable $e) {
+            error_log('host_next_game score_increment_failed game_id=' . $gameId . ' err=' . $e->getMessage());
+        }
+    }
 
     $nextGame = create_next_game($db, $game);
 
