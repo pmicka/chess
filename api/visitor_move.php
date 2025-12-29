@@ -192,6 +192,19 @@ try {
         exit;
     }
 
+    $currentStatus = detect_game_over_from_fen($game['fen']);
+    if (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false)) {
+        finish_game($db, (int)$game['id']);
+        $db->commit();
+        http_response_code(409);
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Game is over. Waiting for next game.',
+            'code' => 'GAME_OVER',
+        ]);
+        exit;
+    }
+
     if ($game['turn_color'] === $game['you_color']) {
         $db->rollBack();
         http_response_code(400);
@@ -260,6 +273,9 @@ try {
 
     $newPgn = append_pgn_move($game['pgn'] ?? '', $game['turn_color'], $lastMoveSan, $newFen);
 
+    $newStatus = detect_game_over_from_fen($newFen);
+    $isOver = ($newStatus['ok'] ?? false) && ($newStatus['over'] ?? false);
+
     // Save visitor move and flip turn back to host (you_color).
     $update = $db->prepare("
         UPDATE games
@@ -267,6 +283,7 @@ try {
             pgn = :pgn,
             last_move_san = :last_move_san,
             turn_color = host_color,
+            status = :status,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :id
     ");
@@ -275,6 +292,7 @@ try {
         ':fen' => $newFen,
         ':pgn' => $newPgn,
         ':last_move_san' => $lastMoveSan,
+        ':status' => $isOver ? 'finished' : 'active',
         ':id' => $game['id'],
     ]);
 
@@ -285,9 +303,15 @@ try {
         $clientFen !== null ? strlen($clientFen) : 'n/a'
     ));
 
-    $tokenInfo = ensure_host_move_token($db, (int)$game['id']);
-    $hostToken = $tokenInfo['token'];
-    $expiresAt = $tokenInfo['expires_at'];
+    $hostToken = null;
+    $expiresAt = null;
+    if (!$isOver) {
+        $tokenInfo = ensure_host_move_token($db, (int)$game['id']);
+        $hostToken = $tokenInfo['token'];
+        $expiresAt = $tokenInfo['expires_at'];
+    } else {
+        $db->prepare('DELETE FROM locks WHERE game_id = :id')->execute([':id' => $game['id']]);
+    }
 
     // Fetch the updated state for the response.
     $stateStmt = $db->prepare("

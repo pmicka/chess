@@ -67,7 +67,7 @@ if ($tokenProvided && $tokenValue === '') {
 }
 
 if ($tokenValue !== '') {
-    $validation = validate_host_token($db, $tokenValue);
+    $validation = validate_host_token($db, $tokenValue, true, false);
     $tokenStatus = $validation['code'] ?? 'unknown';
     $tokenValid = ($validation['ok'] ?? false) === true;
 
@@ -113,7 +113,7 @@ if ($tokenGameId !== null) {
     $stmt = $db->query("
         SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
         FROM games
-        ORDER BY updated_at DESC
+        ORDER BY updated_at DESC, id DESC
         LIMIT 1
     ");
     $game = $stmt->fetch(PDO::FETCH_ASSOC);

@@ -189,10 +189,12 @@ try {
         exit;
     }
 
-    if (($game['status'] ?? '') !== 'active') {
-        $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'Game is not active.']);
+    $currentStatus = detect_game_over_from_fen($game['fen']);
+    if (($game['status'] ?? '') !== 'active' || (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false))) {
+        finish_game($db, (int)$game['id']);
+        $db->commit();
+        http_response_code(409);
+        echo json_encode(['error' => 'Game is over. Waiting for next game.', 'code' => 'GAME_OVER']);
         exit;
     }
 
@@ -242,12 +244,16 @@ try {
     // Flip turn to visitors after saving the host move.
     $nextTurn = $game['host_color'] === 'white' ? 'black' : 'white';
 
+    $newStatus = detect_game_over_from_fen($newFen);
+    $isOver = ($newStatus['ok'] ?? false) && ($newStatus['over'] ?? false);
+
     $update = $db->prepare("
         UPDATE games
         SET fen = :fen,
             pgn = :pgn,
             last_move_san = :move,
             turn_color = CASE host_color WHEN 'white' THEN 'black' ELSE 'white' END,
+            status = :status,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = :id
     ");
@@ -256,6 +262,7 @@ try {
         ':fen' => $newFen,
         ':pgn' => $newPgn,
         ':move' => $move,
+        ':status' => $isOver ? 'finished' : 'active',
         ':id' => $game['id'],
     ]);
 
