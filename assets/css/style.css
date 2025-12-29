@@ -33,12 +33,27 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   line-height: 1.6;
   letter-spacing: 0.01em;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='0.3'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+  mix-blend-mode: soft-light;
+  opacity: 0.035;
+  z-index: 0;
 }
 
 .wrap {
   max-width: 960px;
   margin: 0 auto;
   padding: 32px 18px 56px;
+  position: relative;
+  z-index: 1;
 }
 
 h1,
@@ -78,6 +93,19 @@ a {
 
 .project-intro h2 {
   margin-bottom: 8px;
+}
+
+.sigil-mark {
+  width: 44px;
+  height: 32px;
+  margin: 6px 0 16px;
+  color: var(--text-muted);
+  opacity: 0.9;
+}
+
+.sigil-mark path,
+.sigil-mark rect {
+  vector-effect: non-scaling-stroke;
 }
 
 .project-details {
@@ -134,6 +162,17 @@ a {
   }
 }
 
+.board-shell::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  opacity: 0.65;
+  pointer-events: none;
+  z-index: 0;
+}
+
 #board {
   position: absolute;
   inset: 0;
@@ -146,6 +185,7 @@ a {
   border-radius: 6px;
   overflow: hidden;
   background: var(--surface-strong);
+  z-index: 1;
 }
 
 .sq {
@@ -501,6 +541,22 @@ textarea {
 
 .hidden {
   display: none !important;
+}
+
+.app-footer {
+  margin-top: 28px;
+  padding: 14px 0 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border);
+}
+
+.app-footer .footer-note {
+  margin: 0;
 }
 
 .state-card {
