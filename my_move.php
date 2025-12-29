@@ -26,7 +26,12 @@ require_once __DIR__ . '/lib/score.php';
 
 log_db_path_info('my_move.php');
 
-$tokenValue = isset($_GET['token']) ? trim($_GET['token']) : '';
+$tokenValue = '';
+if (isset($_GET['token'])) {
+    $tokenValue = trim((string)$_GET['token']);
+} elseif (isset($_GET['t'])) {
+    $tokenValue = trim((string)$_GET['t']);
+}
 $db = null;
 try {
     $db = get_db();
@@ -35,8 +40,8 @@ try {
     echo 'Database unavailable: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
     exit;
 }
-$tokenValidation = validate_host_token($db, $tokenValue, true, false);
-$tokenRow = ($tokenValidation['ok'] ?? false) ? ($tokenValidation['row'] ?? null) : null;
+$tokenValidation = validate_host_token($db, $tokenValue, false, false);
+$tokenRow = (($tokenValidation['ok'] ?? false) && ($tokenValidation['code'] ?? '') === 'ok') ? ($tokenValidation['row'] ?? null) : null;
 
 if ($tokenRow) {
     $gameStmt = $db->prepare("SELECT id, status FROM games WHERE id = :id LIMIT 1");
@@ -71,7 +76,17 @@ if (!$tokenRow) {
     }
 }
 
-$tokenIsValid = (bool)$tokenRow;
+$tokenStatusCode = $tokenValidation['code'] ?? 'missing';
+$tokenIsValid = (($tokenValidation['ok'] ?? false) && $tokenStatusCode === 'ok');
+
+$tokenUnavailableMessage = 'This link is invalid or expired. Click “Resend link to my email” to request a new one.';
+if ($tokenStatusCode === 'used') {
+    $tokenUnavailableMessage = 'This link was already used. Click “Resend link to my email” to get a new one.';
+} elseif ($tokenStatusCode === 'expired') {
+    $tokenUnavailableMessage = 'This link has expired. Click “Resend link to my email” to request a fresh link.';
+} elseif ($tokenStatusCode === 'invalid' || $tokenStatusCode === 'missing') {
+    $tokenUnavailableMessage = 'This link is invalid. Click “Resend link to my email” to request a new one.';
+}
 
 $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateTimeInterface)
     ? $tokenRow['expires_at_dt']->format('Y-m-d H:i:s T')
@@ -242,8 +257,8 @@ $scoreLineText = sprintf(
     </div>
 
     <div id="expiredCard" class="card state-card" style="<?php echo $tokenIsValid ? 'display:none;' : 'display:block;'; ?>">
-      <h2>This host link has expired</h2>
-      <p>Host links are single-use. Once a move is made, the link can’t be reused.</p>
+      <h2 id="expiredTitle">Host link unavailable</h2>
+      <p id="expiredMessage"><?php echo htmlspecialchars($tokenUnavailableMessage, ENT_QUOTES, 'UTF-8'); ?></p>
       <div class="controls">
         <button id="btnResendExpired" type="button">Resend link to my email</button>
         <a class="button-link secondary" href="index.php">Return to game</a>
@@ -320,8 +335,10 @@ $scoreLineText = sprintf(
   <script src="assets/ui_helpers.js"></script>
   <script src="assets/chess.min.js"></script>
   <script>
-    window.hostToken = <?php echo json_encode($tokenValue); ?>;
-    window.initialTokenValid = <?php echo $tokenIsValid ? 'true' : 'false'; ?>;
+    window.HOST_TOKEN = <?php echo json_encode($tokenValue); ?>;
+    window.INITIAL_TOKEN_VALID = <?php echo $tokenIsValid ? 'true' : 'false'; ?>;
+    window.INITIAL_TOKEN_STATUS = <?php echo json_encode($tokenStatusCode); ?>;
+    window.INITIAL_TOKEN_MESSAGE = <?php echo json_encode($tokenUnavailableMessage); ?>;
   </script>
   <script>
     const boardEl = document.getElementById('board');
@@ -337,6 +354,8 @@ $scoreLineText = sprintf(
     const btnSubmit = document.getElementById('btnSubmit');
     const btnCopyLink = document.getElementById('btnCopyLink');
     const btnResend = document.getElementById('btnResend');
+    const expiredTitle = document.getElementById('expiredTitle');
+    const expiredMessage = document.getElementById('expiredMessage');
     const statusMsg = document.getElementById('statusMsg');
     const statusSpinner = document.getElementById('statusSpinner');
     const copyStatus = document.getElementById('copyStatus');
@@ -361,13 +380,9 @@ $scoreLineText = sprintf(
     const gameOverBody = document.getElementById('gameOverBody');
     const btnNextGame = document.getElementById('btnNextGame');
     const gameOverRefresh = document.getElementById('gameOverRefresh');
-    const hostToken = (() => {
-      const params = new URLSearchParams(window.location.search || '');
-      const fromQuery = (params.get('token') || '').trim();
-      if (fromQuery) return fromQuery;
-      return (window.hostToken || '').trim();
-    })();
-    const initialTokenValid = Boolean(window.initialTokenValid);
+    const hostToken = (window.HOST_TOKEN || '').trim();
+    const initialTokenValid = Boolean(window.INITIAL_TOKEN_VALID);
+    const initialTokenMessage = (window.INITIAL_TOKEN_MESSAGE || '').toString();
 
     const DEBUG = false;
 
@@ -846,6 +861,9 @@ $scoreLineText = sprintf(
       setInteractionEnabled(false);
       clearSelection();
       updateLastUpdated('Unavailable', 'error');
+      if (expiredMessage && reason) {
+        expiredMessage.textContent = reason;
+      }
       setStatus(reason || 'Host link invalid or expired. Please resend link.', 'error');
       showStateCard(expiredCard);
       if (statusSpinner) statusSpinner.classList.remove('show');
@@ -1071,11 +1089,6 @@ $scoreLineText = sprintf(
 
     async function resendLink(buttonEl, statusEl) {
       if (!buttonEl || !statusEl) return;
-      if (!hostToken) {
-        statusEl.textContent = 'Missing token. Use your email link.';
-        statusEl.className = 'error';
-        return;
-      }
 
       statusEl.textContent = 'Sending...';
       statusEl.className = 'muted';
@@ -1094,7 +1107,7 @@ $scoreLineText = sprintf(
         statusEl.textContent = json.message || 'Sent.';
         statusEl.className = 'ok';
       } catch (err) {
-        statusEl.textContent = 'Failed.';
+        statusEl.textContent = err && err.message ? err.message : 'Failed.';
         statusEl.className = 'error';
       } finally {
         buttonEl.disabled = false;
@@ -1195,7 +1208,8 @@ $scoreLineText = sprintf(
         updateLastUpdated('Failed to load', 'error');
       });
     } else {
-      enterExpiredLinkState('This host link has expired.');
+      const unavailableMessage = initialTokenMessage || 'This host link is invalid or expired. Please request a new one.';
+      enterExpiredLinkState(unavailableMessage);
     }
   </script>
 </body>
