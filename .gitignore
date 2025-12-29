@@ -10,7 +10,7 @@ Thumbs.db
 .idea/
 
 # Secrets (server-only)
-config.php
+config.local.php
 
 # Runtime data (server-only)
 data/*

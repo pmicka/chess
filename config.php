@@ -1,24 +1,49 @@
 <?php
 /**
- * config.php — SERVER-ONLY configuration (DO NOT COMMIT)
+ * config.php — Tracked baseline configuration (safe defaults only)
  *
- * This file contains environment-specific configuration and secrets:
- * - CAPTCHA secret key (e.g., Turnstile secret)
- * - Email routing / SMTP credentials (if used)
- * - BASE_URL for constructing absolute links in emails
- * - DB_PATH pointing to the writable SQLite file location
- *
- * Rules:
- * - Must be excluded from git (via .gitignore).
- * - Must not be displayed or echoed to users.
- * - Treat keys/passwords as secrets.
- *
- * Typical constants:
- * - YOUR_EMAIL
- * - BASE_URL
- * - TURNSTILE_SITE_KEY (public; used in HTML)
- * - TURNSTILE_SECRET_KEY (secret; used server-side verification)
- * - DB_PATH
- * - MAIL_FROM
+ * Real secrets and environment-specific overrides belong in
+ * config.local.php (which is gitignored). This file provides
+ * placeholder values so the app can load without fatal errors in
+ * environments where config.local.php is missing.
  */
 
+$applyPlaceholderConfig = function (): void {
+    // Contact email used for notifications or debugging.
+    if (!defined('YOUR_EMAIL')) {
+        define('YOUR_EMAIL', '');
+    }
+
+    // Base URL of the deployed site (e.g., https://example.com).
+    if (!defined('BASE_URL')) {
+        define('BASE_URL', '');
+    }
+
+    // Cloudflare Turnstile public key (shown in HTML).
+    if (!defined('TURNSTILE_SITE_KEY')) {
+        define('TURNSTILE_SITE_KEY', '');
+    }
+
+    // Cloudflare Turnstile secret key (server-side verification).
+    if (!defined('TURNSTILE_SECRET_KEY')) {
+        define('TURNSTILE_SECRET_KEY', '');
+    }
+
+    // Path to the SQLite database file (kept in writable data/).
+    if (!defined('DB_PATH')) {
+        define('DB_PATH', __DIR__ . '/data/chess.sqlite');
+    }
+
+    // From address used when emailing host tokens.
+    if (!defined('MAIL_FROM')) {
+        define('MAIL_FROM', '');
+    }
+};
+
+$localConfig = __DIR__ . '/config.local.php';
+if (file_exists($localConfig)) {
+    require $localConfig;
+}
+
+$applyPlaceholderConfig();
+unset($applyPlaceholderConfig);
