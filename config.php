@@ -22,3 +22,12 @@
  * - MAIL_FROM
  */
 
+define('DB_PATH', __DIR__ . '/data/chess.sqlite');
+
+// The rest can be empty placeholders for now
+define('YOUR_EMAIL', 'example@gmail.com');
+define('BASE_URL', 'https://yourdomain.com/chess');
+define('TURNSTILE_SITE_KEY', '');
+define('TURNSTILE_SECRET_KEY', '');
+define('MAIL_FROM', 'example@yourdomain.com');
+define('ADMIN_RESET_KEY', '');
