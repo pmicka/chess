@@ -4,6 +4,7 @@
 # - data/ contains runtime state (SQLite) and must never be committed
 
 # OS / editor noise
+/home/
 .DS_Store
 Thumbs.db
 .vscode/
@@ -11,6 +12,7 @@ Thumbs.db
 
 # Secrets (server-only)
 config.php
+config.local.php
 
 # Runtime data (server-only)
 data/*
