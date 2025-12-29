@@ -3,6 +3,7 @@
  * /api/admin_reset.php — Reset the active game to the starting position.
  */
 
+header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
 function respond_json(int $status, array $payload): void

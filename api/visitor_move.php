@@ -28,6 +28,7 @@
  * - Email host a link to /my_move.php?token=...
  */
 
+header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
 try {

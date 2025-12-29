@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /chess/
+Disallow: /chess/my_move.php
+Disallow: /chess/api/
+
+Sitemap: https://patrickmicka.com/chess/sitemap.xml

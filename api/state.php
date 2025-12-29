@@ -20,6 +20,7 @@
  * - Should set Content-Type: application/json.
  */
 
+header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
 function respond(int $statusCode, array $payload): void
