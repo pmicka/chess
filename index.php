@@ -27,12 +27,40 @@
  */
 
 require_once __DIR__ . '/config.php';
+
+$preloadedGame = null;
+try {
+    require_once __DIR__ . '/db.php';
+    $db = get_db();
+    $stmt = $db->query("
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
+        FROM games
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+    ");
+    $preloadedGame = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Throwable $e) {
+    error_log('index.php preload_state_failed: ' . $e->getMessage());
+}
+
+$chessAppConfig = [
+    'currentFen' => $preloadedGame['fen'] ?? null,
+    'movesPgn' => $preloadedGame['pgn'] ?? '',
+    'initialFen' => 'start',
+];
+
+if (!empty($preloadedGame['visitor_color'])) {
+    $chessAppConfig['orient'] = $preloadedGame['visitor_color'];
+}
 ?>
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script>
+    window.CHESS_APP = <?= json_encode($chessAppConfig, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+  </script>
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons//apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons//favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/icons//favicon-16x16.png">
@@ -148,6 +176,10 @@ require_once __DIR__ . '/config.php';
     .gameover-banner.show { display: flex; flex-direction: column; }
     .gameover-banner h3 { margin: 0 0 4px; }
     .gameover-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .history-row { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .history-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    .history-status { font-size: 14px; }
+    #board.history-locked .sq { pointer-events: none; }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
@@ -206,6 +238,17 @@ require_once __DIR__ . '/config.php';
       <div class="status-line" aria-live="polite">
         <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
         <span id="statusMsg" class="muted"></span>
+      </div>
+      <div class="history-row">
+        <div class="history-controls">
+          <button id="btnBack" type="button">Back</button>
+          <button id="btnForward" type="button">Forward</button>
+          <button id="btnLive" type="button">Live</button>
+        </div>
+        <p id="historyStatus" class="muted history-status" aria-live="polite"></p>
+        <div id="historyNotice" class="banner" role="status" aria-live="polite">
+          <span>Reviewing history — click Live to return before submitting a move.</span>
+        </div>
       </div>
       <p class="muted selected-move">
         Selected move: <code id="movePreview">none</code>
@@ -274,6 +317,12 @@ require_once __DIR__ . '/config.php';
     const gameOverTitle = document.getElementById('gameOverTitle');
     const gameOverBody = document.getElementById('gameOverBody');
     const gameOverRefresh = document.getElementById('gameOverRefresh');
+    const btnBack = document.getElementById('btnBack');
+    const btnForward = document.getElementById('btnForward');
+    const btnLive = document.getElementById('btnLive');
+    const historyStatus = document.getElementById('historyStatus');
+    const historyNotice = document.getElementById('historyNotice');
+    const appConfig = window.CHESS_APP || {};
     boardEl.classList.add('locked');
 
     window.turnstileToken = null;
@@ -299,6 +348,10 @@ require_once __DIR__ . '/config.php';
     let submitting = false;
     let promotionChoice = 'q';
     let gameOverState = { over: false, reason: null, winner: null };
+    if (appConfig.orient) {
+      visitorColor = appConfig.orient;
+      hostColor = appConfig.orient === 'white' ? 'black' : 'white';
+    }
 
     function renderPiecePlaceholder(piece) {
       if (!piece) return null;
@@ -528,6 +581,10 @@ require_once __DIR__ . '/config.php';
 
     function onSquareClick(sq) {
       if (!state) return;
+      if (window.__history && !window.__history.isLive) {
+        setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
+        return;
+      }
 
       if (pendingMove && !selectedSquare) {
         clearSelection({ restore: true });
@@ -674,6 +731,9 @@ require_once __DIR__ . '/config.php';
       if (!isSubmitting && pendingMove && !selectionIsStale) {
         btnSubmit.disabled = false;
       }
+      if (window.__history && !window.__history.isLive) {
+        btnSubmit.disabled = true;
+      }
     }
 
     function formatTimestamp(ts) {
@@ -755,6 +815,12 @@ require_once __DIR__ . '/config.php';
     function updateStatusMessage() {
       if (!state) return;
 
+      if (window.__history && !window.__history.isLive) {
+        setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
+        boardEl.classList.add('locked');
+        return;
+      }
+
       if (gameOverState && gameOverState.over) {
         setStatus('Game over. Waiting for next game.', 'muted');
         boardEl.classList.add('locked');
@@ -794,6 +860,119 @@ require_once __DIR__ . '/config.php';
       }
     }
 
+    function buildHistoryTimeline(initialFen, movesPgn) {
+      const startFen = (initialFen && initialFen !== 'start') ? initialFen : null;
+      const seed = startFen ? new Chess(startFen) : new Chess();
+      const timeline = [seed.fen()];
+      const trimmed = (movesPgn || '').trim();
+      if (!trimmed) return timeline;
+
+      const parser = startFen ? new Chess(startFen) : new Chess();
+      const loaded = parser.load_pgn(trimmed, { sloppy: true });
+      if (!loaded) {
+        throw new Error('Invalid PGN');
+      }
+      const historySans = parser.history();
+      const replay = startFen ? new Chess(startFen) : new Chess();
+      historySans.forEach((san, idx) => {
+        const move = replay.move(san, { sloppy: true });
+        if (!move) {
+          throw new Error(`Illegal move at ply ${idx + 1}: ${san}`);
+        }
+        timeline.push(replay.fen());
+      });
+      return timeline;
+    }
+
+    function resetHistoryNotice() {
+      historyNotice?.classList.remove('show');
+    }
+
+    function syncHistoryFromState(currentState) {
+      const initialFen = appConfig.initialFen || 'start';
+      const movesPgn = (currentState && typeof currentState.pgn === 'string')
+        ? currentState.pgn
+        : (appConfig.movesPgn || '');
+      const fallbackFen = (currentState && currentState.fen) ? currentState.fen : (appConfig.currentFen || null);
+      try {
+        const timeline = buildHistoryTimeline(initialFen, movesPgn);
+        const liveIndex = Math.max(0, timeline.length - 1);
+        window.__history = {
+          timeline,
+          idx: liveIndex,
+          liveIndex,
+          get isLive() { return this.idx === this.liveIndex; },
+        };
+        historyStatus.textContent = 'Live';
+        historyStatus.className = 'muted';
+        resetHistoryNotice();
+        return timeline[liveIndex] || fallbackFen;
+      } catch (err) {
+        const message = err && err.message ? err.message : String(err);
+        historyStatus.textContent = `History unavailable: ${message}`;
+        historyStatus.className = 'error';
+        console.error('History reconstruction failed', err);
+        window.__history = null;
+        resetHistoryNotice();
+        return fallbackFen;
+      }
+    }
+
+    function updateHistoryUI() {
+      const h = window.__history;
+      if (!h || !Array.isArray(h.timeline)) {
+        if (btnBack) btnBack.disabled = true;
+        if (btnForward) btnForward.disabled = true;
+        if (btnLive) btnLive.disabled = true;
+        resetHistoryNotice();
+        return;
+      }
+      if (btnBack) btnBack.disabled = h.idx <= 0;
+      if (btnForward) btnForward.disabled = h.idx >= h.timeline.length - 1;
+      if (btnLive) btnLive.disabled = h.isLive;
+      const statusText = h.timeline.length > 1
+        ? (h.isLive ? 'Live' : `Move ${h.idx} of ${h.timeline.length - 1}`)
+        : 'Live';
+      historyStatus.textContent = statusText;
+      historyStatus.className = h.isLive ? 'muted' : 'ok';
+      if (historyNotice) {
+        historyNotice.classList.toggle('show', !h.isLive);
+      }
+      boardEl.classList.toggle('history-locked', Boolean(h && !h.isLive));
+      if (!h.isLive) {
+        btnSubmit.disabled = true;
+      }
+    }
+
+    function applyHistoryPosition(targetIdx, { forceRender = false } = {}) {
+      const h = window.__history;
+      if (!h || !Array.isArray(h.timeline) || !h.timeline.length) {
+        return;
+      }
+      const clamped = Math.max(0, Math.min(targetIdx, h.timeline.length - 1));
+      if (!forceRender && clamped === h.idx) {
+        updateHistoryUI();
+        return;
+      }
+      h.idx = clamped;
+      const targetFen = h.timeline[clamped];
+      try {
+        game.load(targetFen);
+      } catch (err) {
+        historyStatus.textContent = `History unavailable: ${err && err.message ? err.message : err}`;
+        historyStatus.className = 'error';
+        console.error('History load failed', err);
+        window.__history = null;
+        boardEl.classList.remove('history-locked');
+        return;
+      }
+      clearSelection();
+      lastMoveSquares = null;
+      renderBoard();
+      updateStatusMessage();
+      updateHistoryUI();
+    }
+
     function applyStateData(newState, { resetSelection = true } = {}) {
       state = newState;
       latestFetchedStateFingerprint = stateFingerprint(newState);
@@ -810,15 +989,18 @@ require_once __DIR__ . '/config.php';
       fenBox.value = state.fen;
       pgnBox.value = state.pgn;
 
+      const fenFromHistory = syncHistoryFromState(state);
+      const fenToLoad = fenFromHistory || state.fen;
+
       try {
-        game.load(state.fen);
+        game.load(fenToLoad);
       } catch (err) {
         blockForStateError('Invalid FEN from server. Refresh later.');
         return;
       }
       lastMoveSquares = deriveLastMoveSquares(state);
 
-      const detected = computeGameOverFromFen(state.fen);
+      const detected = computeGameOverFromFen(fenToLoad);
       const forcedOver = state.status && state.status !== 'active';
       applyGameOverUI({
         over: forcedOver || detected.over,
@@ -840,6 +1022,7 @@ require_once __DIR__ . '/config.php';
         }
       }
 
+      updateHistoryUI();
       hideUpdateBanner();
     }
 
@@ -899,6 +1082,21 @@ require_once __DIR__ . '/config.php';
       fetchState({ resetSelection: true }).catch(handleStateError);
     }
 
+    // Bootstrap from server-rendered values so the board is not empty before the first fetch.
+    const bootstrapFen = syncHistoryFromState({
+      fen: appConfig.currentFen || undefined,
+      pgn: appConfig.movesPgn || '',
+    });
+    if (bootstrapFen) {
+      try {
+        game.load(bootstrapFen);
+        renderBoard();
+      } catch (err) {
+        console.error('Initial history bootstrap failed', err);
+      }
+    }
+    updateHistoryUI();
+
     // Load state on first render so visitors see the board immediately.
     fetchState().then(() => {
       clearErrors();
@@ -913,6 +1111,28 @@ require_once __DIR__ . '/config.php';
     });
     resetPromotionChooser();
 
+    if (btnBack) {
+      btnBack.addEventListener('click', () => {
+        const h = window.__history;
+        const next = h ? h.idx - 1 : 0;
+        applyHistoryPosition(next);
+      });
+    }
+    if (btnForward) {
+      btnForward.addEventListener('click', () => {
+        const h = window.__history;
+        const next = h ? h.idx + 1 : 0;
+        applyHistoryPosition(next);
+      });
+    }
+    if (btnLive) {
+      btnLive.addEventListener('click', () => {
+        const h = window.__history;
+        const next = h ? h.liveIndex : 0;
+        applyHistoryPosition(next, { forceRender: true });
+      });
+    }
+
     btnRefresh.addEventListener('click', applyQueuedStateOrFetch);
     btnBannerRefresh.addEventListener('click', applyQueuedStateOrFetch);
     if (gameOverRefresh) {
@@ -921,6 +1141,10 @@ require_once __DIR__ . '/config.php';
 
     btnSubmit.addEventListener('click', async () => {
       if (!pendingMove || !state) return;
+      if (window.__history && !window.__history.isLive) {
+        setStatus('Reviewing history — click Live to return before submitting a move.', 'error');
+        return;
+      }
       if (gameOverState && gameOverState.over) {
         setStatus('Game is over. Wait for the next game.', 'error');
         return;
@@ -1050,6 +1274,7 @@ require_once __DIR__ . '/config.php';
 
     copyFenBtn.addEventListener('click', () => copyText(fenBox.value, copyFenMsg));
     copyPgnBtn.addEventListener('click', () => copyText(pgnBox.value, copyPgnMsg));
+    updateHistoryUI();
 
   </script>
 </body>
