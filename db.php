@@ -316,7 +316,7 @@ function insert_host_move_token(PDO $db, int $gameId, DateTimeImmutable $expires
  * Validate and return a host token row for "your_move" purpose.
  * Returns null if missing, expired, or already used.
  */
-function validate_host_token(PDO $db, string $tokenValue): array
+function validate_host_token(PDO $db, string $tokenValue, bool $allowUsed = false, bool $allowExpired = false): array
 {
     $result = [
         'ok' => false,
@@ -338,21 +338,29 @@ function validate_host_token(PDO $db, string $tokenValue): array
     }
 
     if (!empty($row['used']) || !empty($row['used_at'])) {
+        if (!$allowUsed) {
+            $result['code'] = 'used';
+            return $result;
+        }
         $result['code'] = 'used';
-        return $result;
     }
 
     $expiry = token_expiry_from_row($db, $row);
     if ($expiry !== null && datetime_utc() >= $expiry) {
+        if (!$allowExpired) {
+            $result['code'] = 'expired';
+            return $result;
+        }
         $result['code'] = 'expired';
-        return $result;
     }
 
     $row['expires_at_dt'] = $expiry;
 
+    $code = $result['code'] === 'missing' ? 'ok' : $result['code'];
+
     return [
         'ok' => true,
-        'code' => 'ok',
+        'code' => $code,
         'row' => $row,
     ];
 }
@@ -431,6 +439,110 @@ function ensure_host_move_token(PDO $db, int $gameId, ?DateTimeImmutable $expire
 function starting_fen(): string
 {
     return 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+}
+
+/**
+ * Derive game-over status from a FEN using chess.js (via Node).
+ * Returns:
+ * [
+ *   'ok' => bool,
+ *   'over' => bool,
+ *   'reason' => string|null,
+ *   'winner' => 'w'|'b'|null,
+ *   'error' => string|null,
+ * ]
+ */
+function detect_game_over_from_fen(string $fen): array
+{
+    $response = [
+        'ok' => false,
+        'over' => false,
+        'reason' => null,
+        'winner' => null,
+        'error' => null,
+    ];
+
+    $script = __DIR__ . '/scripts/fen_status.js';
+    if (!is_file($script)) {
+        $response['error'] = 'Detector script missing';
+        return $response;
+    }
+
+    $cmd = 'node ' . escapeshellarg($script) . ' ' . escapeshellarg($fen);
+    $output = @shell_exec($cmd);
+    if ($output === null || $output === false) {
+        $response['error'] = 'Detector failed';
+        return $response;
+    }
+
+    $decoded = json_decode(trim($output), true);
+    if (!is_array($decoded)) {
+        $response['error'] = 'Detector parse failure';
+        return $response;
+    }
+
+    return [
+        'ok' => true,
+        'over' => (bool)($decoded['over'] ?? false),
+        'reason' => $decoded['reason'] ?? null,
+        'winner' => $decoded['winner'] ?? null,
+        'error' => $decoded['error'] ?? null,
+    ];
+}
+
+/**
+ * Mark a game as finished and clear locks/tokens for that game.
+ */
+function finish_game(PDO $db, int $gameId): void
+{
+    $db->prepare("UPDATE games SET status = 'finished', updated_at = CURRENT_TIMESTAMP WHERE id = :id")
+        ->execute([':id' => $gameId]);
+    $db->prepare('DELETE FROM locks WHERE game_id = :id')->execute([':id' => $gameId]);
+}
+
+/**
+ * Create a new game with flipped colors based on a completed game row.
+ */
+function create_next_game(PDO $db, array $completedGame): array
+{
+    $currentHost = strtolower($completedGame['host_color'] ?? 'white') === 'black' ? 'black' : 'white';
+    $nextHost = $currentHost === 'white' ? 'black' : 'white';
+    $nextVisitor = $nextHost === 'white' ? 'black' : 'white';
+    $initialFen = starting_fen();
+    $turnColor = 'white';
+
+    $insert = $db->prepare("
+        INSERT INTO games (host_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at)
+        VALUES (:host_color, :visitor_color, :turn_color, 'active', :fen, '', NULL, CURRENT_TIMESTAMP)
+    ");
+
+    $insert->execute([
+        ':host_color' => $nextHost,
+        ':visitor_color' => $nextVisitor,
+        ':turn_color' => $turnColor,
+        ':fen' => $initialFen,
+    ]);
+
+    $newGameId = (int)$db->lastInsertId();
+
+    // If host is White, they move first; pre-issue a token so the host can act immediately.
+    $hostToken = null;
+    $tokenExpiry = null;
+    if ($nextHost === 'white') {
+        $tokenInfo = ensure_host_move_token($db, $newGameId);
+        $hostToken = $tokenInfo['token'] ?? null;
+        $tokenExpiry = $tokenInfo['expires_at'] ?? null;
+    }
+
+    return [
+        'id' => $newGameId,
+        'host_color' => $nextHost,
+        'visitor_color' => $nextVisitor,
+        'turn_color' => $turnColor,
+        'fen' => $initialFen,
+        'host_token' => $hostToken,
+        'token_expires_at' => $tokenExpiry,
+    ];
 }
 
 /**

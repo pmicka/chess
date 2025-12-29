@@ -136,6 +136,18 @@ require_once __DIR__ . '/config.php';
     }
     .error-block.show { display: block; }
     .turnstile-wrap { margin-top: 12px; }
+    .gameover-banner {
+      display: none;
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid #d97706;
+      background: #fff7ed;
+      border-radius: 12px;
+      gap: 12px;
+    }
+    .gameover-banner.show { display: flex; flex-direction: column; }
+    .gameover-banner h3 { margin: 0 0 4px; }
+    .gameover-actions { display: flex; gap: 10px; flex-wrap: wrap; }
   </style>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
@@ -167,6 +179,15 @@ require_once __DIR__ . '/config.php';
       <div class="board-container">
         <div class="board-shell">
           <div id="board" aria-label="Chess board"></div>
+        </div>
+      </div>
+      <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
+        <div>
+          <h3 id="gameOverTitle"></h3>
+          <p id="gameOverBody" class="muted" style="margin:0;"></p>
+        </div>
+        <div class="gameover-actions">
+          <button id="gameOverRefresh" type="button">Refresh</button>
         </div>
       </div>
       <div class="turnstile-wrap">
@@ -249,6 +270,10 @@ require_once __DIR__ . '/config.php';
     const btnBannerRefresh = document.getElementById('btnBannerRefresh');
     const promotionChooser = document.getElementById('promotionChooser');
     const promotionButtons = Array.from(document.querySelectorAll('.promo-btn'));
+    const gameOverBanner = document.getElementById('gameOverBanner');
+    const gameOverTitle = document.getElementById('gameOverTitle');
+    const gameOverBody = document.getElementById('gameOverBody');
+    const gameOverRefresh = document.getElementById('gameOverRefresh');
     boardEl.classList.add('locked');
 
     window.turnstileToken = null;
@@ -273,6 +298,7 @@ require_once __DIR__ . '/config.php';
     let pollHandle = null;
     let submitting = false;
     let promotionChoice = 'q';
+    let gameOverState = { over: false, reason: null, winner: null };
 
     function renderPiecePlaceholder(piece) {
       if (!piece) return null;
@@ -657,8 +683,83 @@ require_once __DIR__ . '/config.php';
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     }
 
+    function normalizeColor(color) {
+      if (uiHelpers && typeof uiHelpers.normalizeColor === 'function') {
+        return uiHelpers.normalizeColor(color);
+      }
+      return String(color).toLowerCase() === 'black' ? 'black' : 'white';
+    }
+
+    function computeGameOverFromFen(fen) {
+      const base = { over: false, reason: null, winner: null };
+      if (!fen) return base;
+      try {
+        const checker = new Chess(fen);
+        const checkmate = checker.in_checkmate();
+        const stalemate = checker.in_stalemate();
+        const draw = checker.in_draw();
+        let winner = null;
+        if (checkmate) {
+          const turn = checker.turn(); // side to move is checkmated
+          winner = turn === 'w' ? 'b' : 'w';
+        }
+        let reason = null;
+        if (checkmate) reason = 'checkmate';
+        else if (stalemate) reason = 'stalemate';
+        else if (draw) reason = 'draw';
+        return {
+          over: checkmate || stalemate || draw,
+          reason,
+          winner,
+        };
+      } catch (err) {
+        return base;
+      }
+    }
+
+    function applyGameOverUI(info) {
+      gameOverState = info || { over: false, reason: null, winner: null };
+      const isOver = gameOverState.over === true;
+      boardEl.classList.toggle('locked', isOver);
+      btnSubmit.disabled = true;
+      if (!isOver) {
+        if (gameOverBanner) gameOverBanner.classList.remove('show');
+        return;
+      }
+
+      const winnerColor = gameOverState.winner === 'w' ? 'white' : (gameOverState.winner === 'b' ? 'black' : null);
+      const hostColorNorm = normalizeColor(hostColor);
+      const visitorColorNorm = normalizeColor(visitorColor);
+      const hostWon = winnerColor && winnerColor === hostColorNorm;
+      const worldWon = winnerColor && winnerColor === visitorColorNorm;
+      let title = 'Game over';
+      let body = 'No winner this time. Next game will flip the sides as usual.';
+      if (gameOverState.reason === 'checkmate') {
+        title = 'Checkmate';
+        if (hostWon) {
+          body = 'You win this one. The board resets and the sides flip for the next round.';
+        } else if (worldWon) {
+          body = 'The world takes it. Same board, next game—sides flip and we go again.';
+        }
+      } else if (gameOverState.reason === 'stalemate' || gameOverState.reason === 'draw') {
+        title = 'Draw';
+        body = 'No winner this time. Next game will flip the sides as usual.';
+      }
+
+      if (gameOverTitle) gameOverTitle.textContent = title;
+      if (gameOverBody) gameOverBody.textContent = body;
+      if (gameOverBanner) gameOverBanner.classList.add('show');
+      setStatus('Game over. Waiting for next game.', 'muted');
+    }
+
     function updateStatusMessage() {
       if (!state) return;
+
+      if (gameOverState && gameOverState.over) {
+        setStatus('Game over. Waiting for next game.', 'muted');
+        boardEl.classList.add('locked');
+        return;
+      }
 
       if (state.status !== 'active') {
         setStatus(`Game is ${state.status || 'inactive'}.`, 'muted');
@@ -716,6 +817,14 @@ require_once __DIR__ . '/config.php';
         return;
       }
       lastMoveSquares = deriveLastMoveSquares(state);
+
+      const detected = computeGameOverFromFen(state.fen);
+      const forcedOver = state.status && state.status !== 'active';
+      applyGameOverUI({
+        over: forcedOver || detected.over,
+        reason: detected.reason || (forcedOver ? 'finished' : null),
+        winner: detected.winner || null,
+      });
 
       debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
       renderBoard();
@@ -806,9 +915,16 @@ require_once __DIR__ . '/config.php';
 
     btnRefresh.addEventListener('click', applyQueuedStateOrFetch);
     btnBannerRefresh.addEventListener('click', applyQueuedStateOrFetch);
+    if (gameOverRefresh) {
+      gameOverRefresh.addEventListener('click', applyQueuedStateOrFetch);
+    }
 
     btnSubmit.addEventListener('click', async () => {
       if (!pendingMove || !state) return;
+      if (gameOverState && gameOverState.over) {
+        setStatus('Game is over. Wait for the next game.', 'error');
+        return;
+      }
       if (!ensureTokenPresent()) return;
 
       const latestKnownFingerprint = latestFetchedStateFingerprint || stateFingerprint(state);

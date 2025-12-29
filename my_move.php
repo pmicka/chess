@@ -34,14 +34,15 @@ try {
     echo 'Database unavailable: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
     exit;
 }
-$tokenRow = fetch_valid_host_token($db, $tokenValue);
+$tokenValidation = validate_host_token($db, $tokenValue, true, false);
+$tokenRow = ($tokenValidation['ok'] ?? false) ? ($tokenValidation['row'] ?? null) : null;
 
 if ($tokenRow) {
     $gameStmt = $db->prepare("SELECT id, status FROM games WHERE id = :id LIMIT 1");
     $gameStmt->execute([':id' => $tokenRow['game_id']]);
     $gameRow = $gameStmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$gameRow || ($gameRow['status'] ?? '') !== 'active') {
+    if (!$gameRow) {
         $tokenRow = null;
     }
 }
@@ -191,6 +192,18 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
       background: #fff;
       color: #111;
     }
+    .gameover-banner {
+      display: none;
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid #d97706;
+      background: #fff7ed;
+      border-radius: 12px;
+      gap: 12px;
+    }
+    .gameover-banner.show { display: flex; flex-direction: column; }
+    .gameover-banner h3 { margin: 0 0 4px; }
+    .gameover-actions { display: flex; gap: 10px; flex-wrap: wrap; }
   </style>
 </head>
 <body>
@@ -233,6 +246,16 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
         <div class="board-container">
           <div class="board-shell">
             <div id="board" aria-label="Chess board"></div>
+          </div>
+        </div>
+        <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
+          <div>
+            <h3 id="gameOverTitle"></h3>
+            <p id="gameOverBody" class="muted" style="margin:0;"></p>
+          </div>
+          <div class="gameover-actions">
+            <button id="btnNextGame" type="button">Start next game</button>
+            <button id="gameOverRefresh" type="button" class="secondary button-link">Refresh</button>
           </div>
         </div>
         <div class="controls">
@@ -322,6 +345,11 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
     const errorBanner = document.getElementById('errorBanner');
     const promotionChooser = document.getElementById('promotionChooser');
     const promotionButtons = Array.from(document.querySelectorAll('.promo-btn'));
+    const gameOverBanner = document.getElementById('gameOverBanner');
+    const gameOverTitle = document.getElementById('gameOverTitle');
+    const gameOverBody = document.getElementById('gameOverBody');
+    const btnNextGame = document.getElementById('btnNextGame');
+    const gameOverRefresh = document.getElementById('gameOverRefresh');
     const hostToken = (() => {
       const params = new URLSearchParams(window.location.search || '');
       const fromQuery = (params.get('token') || '').trim();
@@ -348,6 +376,7 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
     let promotionChoice = 'q';
     let redirectTimer = null;
     let redirectInterval = null;
+    let gameOverState = { over: false, reason: null, winner: null };
 
     function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
       statusMsg.textContent = message;
@@ -489,6 +518,74 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
       const d = new Date(ts);
       if (Number.isNaN(d.getTime())) return ts;
       return d.toLocaleString();
+    }
+
+    function normalizeColor(color) {
+      if (uiHelpers && typeof uiHelpers.normalizeColor === 'function') {
+        return uiHelpers.normalizeColor(color);
+      }
+      return String(color).toLowerCase() === 'black' ? 'black' : 'white';
+    }
+
+    function computeGameOverFromFen(fen) {
+      const base = { over: false, reason: null, winner: null };
+      if (!fen) return base;
+      try {
+        const checker = new Chess(fen);
+        const checkmate = checker.in_checkmate();
+        const stalemate = checker.in_stalemate();
+        const draw = checker.in_draw();
+        let winner = null;
+        if (checkmate) {
+          const turn = checker.turn();
+          winner = turn === 'w' ? 'b' : 'w';
+        }
+        let reason = null;
+        if (checkmate) reason = 'checkmate';
+        else if (stalemate) reason = 'stalemate';
+        else if (draw) reason = 'draw';
+        return {
+          over: checkmate || stalemate || draw,
+          reason,
+          winner,
+        };
+      } catch (err) {
+        return base;
+      }
+    }
+
+    function applyGameOverUI(info) {
+      gameOverState = info || { over: false, reason: null, winner: null };
+      const isOver = gameOverState.over === true;
+      setInteractionEnabled(!isOver);
+      btnSubmit.disabled = true;
+      if (!isOver) {
+        if (gameOverBanner) gameOverBanner.classList.remove('show');
+        return;
+      }
+      const winnerColor = gameOverState.winner === 'w' ? 'white' : (gameOverState.winner === 'b' ? 'black' : null);
+      const hostColorNorm = normalizeColor(youColor);
+      const visitorColorNorm = normalizeColor(visitorColor);
+      const hostWon = winnerColor && winnerColor === hostColorNorm;
+      const worldWon = winnerColor && winnerColor === visitorColorNorm;
+      let title = 'Game over';
+      let body = 'No winner this time. Next game will flip the sides as usual.';
+      if (gameOverState.reason === 'checkmate') {
+        title = 'Checkmate';
+        if (hostWon) {
+          body = 'You win this one. The board resets and the sides flip for the next round.';
+        } else if (worldWon) {
+          body = 'The world takes it. Same board, next game—sides flip and we go again.';
+        }
+      } else if (gameOverState.reason === 'stalemate' || gameOverState.reason === 'draw') {
+        title = 'Draw';
+        body = 'No winner this time. Next game will flip the sides as usual.';
+      }
+
+      if (gameOverTitle) gameOverTitle.textContent = title;
+      if (gameOverBody) gameOverBody.textContent = body;
+      if (gameOverBanner) gameOverBanner.classList.add('show');
+      setStatus('Game over.', 'muted');
     }
 
     function updateLastUpdated(displayTs, className = 'muted') {
@@ -832,11 +929,23 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
           lastUpdatedTs = state.updated_at || null;
           updateLastUpdated(formatTimestamp(lastUpdatedTs), 'muted');
 
-          setStatus(isYourTurn() ? 'Your turn.' : 'Waiting on visitors.', isYourTurn() ? 'ok' : 'muted');
+          const detected = computeGameOverFromFen(state.fen);
+          const forcedOver = state.status && state.status !== 'active';
+          applyGameOverUI({
+            over: forcedOver || detected.over,
+            reason: detected.reason || (forcedOver ? 'finished' : null),
+            winner: detected.winner || null,
+          });
+
+          if (gameOverState.over) {
+            setStatus('Game over. Start the next game when ready.', 'muted');
+          } else {
+            setStatus(isYourTurn() ? 'Your turn.' : 'Waiting on visitors.', isYourTurn() ? 'ok' : 'muted');
+            setInteractionEnabled(true);
+          }
           btnSubmit.disabled = true;
           clearErrorBanner();
           if (statusSpinner) statusSpinner.classList.remove('show');
-          setInteractionEnabled(true);
         } catch (err) {
           state = null;
           const isAuthError = [401, 403, 410].includes(err.status);
@@ -888,6 +997,10 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
     btnSubmit.addEventListener('click', async () => {
       if (!hostToken) {
         setStatus('Missing token. Please use the link from your email.', 'error');
+        return;
+      }
+      if (gameOverState && gameOverState.over) {
+        setStatus('Game is over. Start the next game.', 'error');
         return;
       }
       if (!pendingMove || !state) return;
@@ -980,6 +1093,48 @@ $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateT
     btnResend.addEventListener('click', () => resendLink(btnResend, resendStatus));
     if (btnResendExpired && resendStatusExpired) {
       btnResendExpired.addEventListener('click', () => resendLink(btnResendExpired, resendStatusExpired));
+    }
+
+    async function startNextGame() {
+      if (!hostToken) {
+        setStatus('Missing token. Use your host link.', 'error');
+        return;
+      }
+      if (!gameOverState.over) {
+        setStatus('Game is not over yet.', 'error');
+        return;
+      }
+      if (btnNextGame) btnNextGame.disabled = true;
+      setStatus('Starting next game…', 'muted', { showSpinner: true });
+      try {
+        const res = await fetch('api/host_next_game.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: hostToken }),
+        });
+        const json = await res.json();
+        if (!res.ok || (json && json.ok === false)) {
+          const errMsg = (json && (json.error || json.message)) || 'Failed to start next game.';
+          throw new Error(errMsg);
+        }
+        window.location.href = 'index.php';
+      } catch (err) {
+        setStatus(err.message || 'Failed to start next game.', 'error');
+        if (btnNextGame) btnNextGame.disabled = false;
+      } finally {
+        if (statusSpinner) statusSpinner.classList.remove('show');
+      }
+    }
+
+    if (btnNextGame) {
+      btnNextGame.addEventListener('click', startNextGame);
+    }
+    if (gameOverRefresh) {
+      gameOverRefresh.addEventListener('click', () => {
+        fetchState().catch(err => {
+          setStatus(err.message || 'Failed to refresh', 'error');
+        });
+      });
     }
 
     function clearCopyNotes() {
