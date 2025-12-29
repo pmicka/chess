@@ -64,7 +64,7 @@ if (isset($data['fen']) || isset($data['pgn'])) {
     exit;
 }
 
-if ($tokenValue === '') {
+if ($tokenValue === '' && $action !== 'resend') {
     http_response_code(401);
     echo json_encode(['error' => 'Token missing', 'code' => 'AUTH_MISSING']);
     exit;
@@ -74,6 +74,69 @@ $db = null;
 
 try {
     $db = get_db();
+
+    if ($action === 'resend') {
+        $db->beginTransaction();
+
+        $tokenRow = null;
+        if ($tokenValue !== '') {
+            $validation = validate_host_token($db, $tokenValue, true, true);
+            if (($validation['ok'] ?? false) === true && isset($validation['row'])) {
+                $tokenRow = $validation['row'];
+            }
+        }
+
+        $game = null;
+        if ($tokenRow) {
+            $stmt = $db->prepare("
+                SELECT id, host_color, visitor_color, turn_color, status, last_move_san
+                FROM games
+                WHERE id = :id
+                LIMIT 1
+            ");
+            $stmt->execute([':id' => $tokenRow['game_id']]);
+            $game = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if (!$game || ($game['status'] ?? '') !== 'active' || ($game['turn_color'] ?? null) !== ($game['host_color'] ?? null)) {
+            $fallback = $db->query("
+                SELECT id, host_color, visitor_color, turn_color, status, last_move_san
+                FROM games
+                WHERE status = 'active' AND host_color = turn_color
+                ORDER BY updated_at DESC
+                LIMIT 1
+            ");
+            $game = $fallback->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if (!$game) {
+            $db->rollBack();
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'No active host turn available.']);
+            exit;
+        }
+
+        $expiry = default_host_token_expiry();
+        $freshToken = insert_host_move_token($db, (int)$game['id'], $expiry);
+
+        $db->commit();
+
+        $emailResult = send_host_turn_email((int)$game['id'], $freshToken, $expiry, $game['last_move_san'] ?? 'n/a');
+
+        $response = [
+            'ok' => ($emailResult['ok'] ?? false) === true,
+            'token' => $freshToken,
+            'message' => ($emailResult['ok'] ?? false) === true ? 'Sent.' : 'Email failed.',
+        ];
+
+        if (($emailResult['ok'] ?? false) !== true) {
+            $response['error'] = $emailResult['warning'] ?? 'Failed to send email.';
+        }
+
+        echo json_encode($response);
+        exit;
+    }
+
     $db->beginTransaction();
 
     $validation = validate_host_token($db, $tokenValue);
@@ -100,55 +163,6 @@ try {
         $validation['code'] ?? 'ok',
         $_SERVER['REQUEST_URI'] ?? 'n/a'
     ));
-
-    if ($action === 'resend') {
-        $stmt = $db->prepare("
-            SELECT id, host_color, visitor_color, turn_color, status, last_move_san
-            FROM games
-            WHERE id = :id
-            LIMIT 1
-        ");
-        $stmt->execute([':id' => $tokenRow['game_id']]);
-        $game = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if (!$game) {
-            $db->rollBack();
-            http_response_code(400);
-            echo json_encode(['error' => 'No active game found.']);
-            exit;
-        }
-
-        if (($game['status'] ?? '') !== 'active') {
-            $db->rollBack();
-            http_response_code(400);
-            echo json_encode(['error' => 'Game is not active.']);
-            exit;
-        }
-
-        if ($game['turn_color'] !== $game['host_color']) {
-            $db->rollBack();
-            http_response_code(400);
-            echo json_encode(['error' => 'It is not the host turn.']);
-            exit;
-        }
-
-        $db->commit();
-
-        $expiry = $tokenRow['expires_at_dt'] ?? null;
-        $emailResult = send_host_turn_email((int)$game['id'], $tokenValue, $expiry, $game['last_move_san'] ?? 'n/a');
-
-        $response = [
-            'ok' => ($emailResult['ok'] ?? false) === true,
-            'message' => ($emailResult['ok'] ?? false) === true ? 'Sent.' : 'Failed.',
-        ];
-
-        if (($emailResult['ok'] ?? false) !== true && !empty($emailResult['warning'])) {
-            $response['error'] = $emailResult['warning'];
-        }
-
-        echo json_encode($response);
-        exit;
-    }
 
     if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
         $db->rollBack();
