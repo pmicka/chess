@@ -1,0 +1,31 @@
+<?php
+/**
+ * config.local.php.example — local-only overrides
+ *
+ * Copy this file to config.local.php and replace the placeholder values
+ * with your real secrets. The config.local.php file is gitignored.
+ */
+
+if (!defined('YOUR_EMAIL')) {
+    define('YOUR_EMAIL', 'you@example.com');
+}
+
+if (!defined('BASE_URL')) {
+    define('BASE_URL', 'https://example.com');
+}
+
+if (!defined('TURNSTILE_SITE_KEY')) {
+    define('TURNSTILE_SITE_KEY', 'turnstile_site_key_here');
+}
+
+if (!defined('TURNSTILE_SECRET_KEY')) {
+    define('TURNSTILE_SECRET_KEY', 'turnstile_secret_here');
+}
+
+if (!defined('DB_PATH')) {
+    define('DB_PATH', __DIR__ . '/data/chess.sqlite');
+}
+
+if (!defined('MAIL_FROM')) {
+    define('MAIL_FROM', 'chess@example.com');
+}
