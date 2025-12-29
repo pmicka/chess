@@ -559,6 +559,18 @@ textarea {
   margin: 0;
 }
 
+.app-footer a {
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.app-footer a:hover,
+.app-footer a:focus-visible {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .state-card {
   display: none;
   margin-top: 12px;
