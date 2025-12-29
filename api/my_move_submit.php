@@ -25,6 +25,7 @@
  * - Token should be marked used immediately on success.
  */
 
+header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
 try {

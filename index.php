@@ -52,6 +52,11 @@ $scoreLineText = sprintf(
     $scoreTotals['draws'] ?? 0
 );
 
+$baseUrl = defined('BASE_URL') ? trim((string)BASE_URL) : '';
+$canonicalUrl = rtrim($baseUrl !== '' ? $baseUrl : 'https://patrickmicka.com/chess/', '/') . '/';
+$pageTitle = 'Me vs the World — Asynchronous Chess Experiment';
+$pageDescription = 'Visitors play collectively against a single host in an ongoing chess game. Built in public with PHP, SQLite, and chess.js.';
+
 $chessAppConfig = [
     'currentFen' => $preloadedGame['fen'] ?? null,
     'movesPgn' => $preloadedGame['pgn'] ?? '',
@@ -67,6 +72,37 @@ if (!empty($preloadedGame['visitor_color'])) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
+  <meta name="description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
+  <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:title" content="<?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:image" content="<?= htmlspecialchars($canonicalUrl . 'assets/icons/android-chrome-512x512.png', ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="<?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="twitter:description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="twitter:image" content="<?= htmlspecialchars($canonicalUrl . 'assets/icons/android-chrome-512x512.png', ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="theme-color" content="#0b0b0b" />
+  <link rel="manifest" href="/chess/manifest.webmanifest">
+  <script type="application/ld+json">
+  <?= json_encode([
+      '@context' => 'https://schema.org',
+      '@type' => 'SoftwareApplication',
+      'name' => 'Me vs the World — Asynchronous Chess Experiment',
+      'description' => $pageDescription,
+      'url' => $canonicalUrl,
+      'applicationCategory' => 'Game',
+      'operatingSystem' => 'Web',
+      'author' => [
+          '@type' => 'Person',
+          'name' => 'Patrick Micka',
+      ],
+      'license' => $canonicalUrl . 'LICENSE',
+      'codeRepository' => 'https://github.com/pmicka/chess',
+  ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?>
+  </script>
   <script>
     window.CHESS_APP = <?= json_encode($chessAppConfig, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
   </script>
@@ -74,7 +110,6 @@ if (!empty($preloadedGame['visitor_color'])) {
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons//apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons//favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/icons//favicon-16x16.png">
-  <title>Me vs the World Chess</title>
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>

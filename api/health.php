@@ -3,6 +3,7 @@
  * /api/health.php — Deployment health check
  */
 
+header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
 function respond(int $status, array $payload): void

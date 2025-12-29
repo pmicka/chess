@@ -3,6 +3,7 @@
  * /api/host_next_game.php — Host-controlled start of next game after game over.
  */
 
+header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
 function respond(int $status, array $payload): void
