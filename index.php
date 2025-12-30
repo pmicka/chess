@@ -1157,8 +1157,7 @@ if (!empty($preloadedGame['visitor_color'])) {
             to: pendingMove.to,
             promotion: pendingMove && pendingMove.requiresPromotion ? pendingMove.promotion : '',
             last_known_updated_at: state.updated_at,
-            turnstile_token: window.turnstileToken,
-            client_fen: game.fen()
+            turnstile_token: window.turnstileToken
           })
         });
 
