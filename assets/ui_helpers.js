@@ -66,7 +66,7 @@
       return renderPlaceholderPiece(color);
     }
 
-    const alt = `${color === 'w' ? 'White' : 'Black'} ${PIECE_ALT[type] || ''}`.trim();
+    const alt = 'Chess piece';
     const img = document.createElement('img');
     img.src = PIECE_ASSETS[color][type];
     img.alt = alt || 'Chess piece';
