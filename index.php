@@ -54,6 +54,7 @@ $scoreLineText = sprintf(
 
 $baseUrl = defined('BASE_URL') ? trim((string)BASE_URL) : '';
 $canonicalUrl = rtrim($baseUrl !== '' ? $baseUrl : 'https://patrickmicka.com/chess/', '/') . '/';
+$googleVerification = defined('GOOGLE_SITE_VERIFICATION') ? trim((string)GOOGLE_SITE_VERIFICATION) : '';
 $pageTitle = 'Me vs the World — Asynchronous Chess Experiment';
 $pageDescription = 'Visitors play collectively against a single host in an ongoing chess game. Built in public with PHP, SQLite, and chess.js.';
 
@@ -74,6 +75,9 @@ if (!empty($preloadedGame['visitor_color'])) {
   <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
   <meta name="description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
   <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <?php if ($googleVerification !== ''): ?>
+    <meta name="google-site-verification" content="<?= htmlspecialchars($googleVerification, ENT_QUOTES, 'UTF-8') ?>" />
+  <?php endif; ?>
   <meta property="og:title" content="<?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>" />
   <meta property="og:description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
   <meta property="og:type" content="website" />

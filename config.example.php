@@ -18,6 +18,9 @@ const TURNSTILE_SITE_KEY = 'turnstile_site_key_here';
 // Cloudflare Turnstile secret key (server-side verification).
 const TURNSTILE_SECRET_KEY = 'turnstile_secret_here';
 
+// Optional: Google Search Console verification token for the meta tag.
+const GOOGLE_SITE_VERIFICATION = '';
+
 // Path to the SQLite database file (kept in writable data/).
 const DB_PATH = __DIR__ . '/data/chess.sqlite';
 

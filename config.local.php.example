@@ -22,6 +22,10 @@ if (!defined('TURNSTILE_SECRET_KEY')) {
     define('TURNSTILE_SECRET_KEY', 'turnstile_secret_here');
 }
 
+if (!defined('GOOGLE_SITE_VERIFICATION')) {
+    define('GOOGLE_SITE_VERIFICATION', '');
+}
+
 if (!defined('DB_PATH')) {
     define('DB_PATH', __DIR__ . '/data/chess.sqlite');
 }
