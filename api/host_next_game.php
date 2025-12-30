@@ -5,35 +5,26 @@
 
 header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
-
-function respond(int $status, array $payload): void
-{
-    http_response_code($status);
-    echo json_encode($payload);
-    exit;
-}
+require_once __DIR__ . '/../lib/http.php';
 
 try {
     require_once __DIR__ . '/../db.php';
     require_once __DIR__ . '/../lib/score.php';
 } catch (Throwable $e) {
-    respond(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
 }
 log_db_path_info('host_next_game');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    respond(405, ['ok' => false, 'error' => 'POST required']);
-}
+require_post();
 
-$raw = file_get_contents('php://input');
-$data = json_decode($raw, true);
+$data = read_json_body();
 if (!is_array($data)) {
     $data = [];
 }
 
-$tokenValue = trim($data['token'] ?? '');
+$tokenValue = clean_string($data['token'] ?? '', 256);
 if ($tokenValue === '') {
-    respond(401, ['ok' => false, 'error' => 'Token missing', 'code' => 'AUTH_MISSING']);
+    respond_json(401, ['ok' => false, 'error' => 'Token missing', 'code' => 'AUTH_MISSING']);
 }
 
 $db = null;
@@ -47,7 +38,12 @@ try {
         $db->rollBack();
         $code = $validation['code'] ?? 'invalid';
         $http = $code === 'expired' ? 410 : 403;
-        respond($http, ['ok' => false, 'error' => 'Invalid token', 'code' => $code]);
+        log_event('host_next_game_auth_fail', [
+            'token_suffix' => token_suffix($tokenValue),
+            'code' => $code,
+            'ip' => client_ip(),
+        ]);
+        respond_json($http, ['ok' => false, 'error' => 'Invalid token', 'code' => $code]);
     }
 
     $tokenRow = $validation['row'];
@@ -62,7 +58,7 @@ try {
 
     if (!$game) {
         $db->rollBack();
-        respond(400, ['ok' => false, 'error' => 'Game not found', 'code' => 'game_not_found']);
+        respond_json(400, ['ok' => false, 'error' => 'Game not found', 'code' => 'game_not_found']);
     }
 
     $gameId = (int)$game['id'];
@@ -71,7 +67,7 @@ try {
 
     if (($game['status'] ?? '') === 'active' && !$isOver) {
         $db->rollBack();
-        respond(400, ['ok' => false, 'error' => 'Game is not over yet.', 'code' => 'not_over']);
+        respond_json(400, ['ok' => false, 'error' => 'Game is not over yet.', 'code' => 'not_over']);
     }
 
     $resultLabel = null;
@@ -102,7 +98,12 @@ try {
 
     $db->commit();
 
-    respond(200, [
+    log_event('host_next_game', [
+        'game_id' => $gameId,
+        'result' => $resultLabel ?? 'unknown',
+    ]);
+
+    respond_json(200, [
         'ok' => true,
         'new_game_id' => $nextGame['id'],
         'host_color' => $nextGame['host_color'],
@@ -118,10 +119,11 @@ try {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
-    respond(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'db_path']);
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'db_path']);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
-    respond(500, ['ok' => false, 'error' => 'Failed to start next game.']);
+    log_event('host_next_game_error', ['error' => $e->getMessage()]);
+    respond_json(500, ['ok' => false, 'error' => 'Failed to start next game.']);
 }

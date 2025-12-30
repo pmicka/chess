@@ -30,22 +30,15 @@
 
 header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
+require_once __DIR__ . '/../lib/http.php';
 
 try {
     require_once __DIR__ . '/../db.php';
 } catch (Throwable $e) {
-    http_response_code(503);
-    echo json_encode(['error' => $e->getMessage()]);
-    exit;
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
 }
 log_db_path_info('visitor_move');
-
-// Accept only POST with JSON payload.
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['error' => 'POST required']);
-    exit;
-}
+require_post();
 
 /**
  * Parse request data from JSON or form-encoded POST.
@@ -69,45 +62,36 @@ function get_request_data(): ?array
 $data = get_request_data();
 
 if (!is_array($data)) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid request body']);
-    exit;
+    respond_json(400, ['ok' => false, 'error' => 'Invalid request body', 'code' => 'bad_payload']);
 }
 
-$turnstileToken = trim(
+$turnstileToken = clean_string(
     $data['turnstile_token']
     ?? $data['cf-turnstile-response']
-    ?? ''
+    ?? '',
+    2048
 );
-$from = strtolower(trim($data['from'] ?? ''));
-$to = strtolower(trim($data['to'] ?? ''));
-$promotion = strtolower(trim($data['promotion'] ?? ''));
-$lastMoveSan = trim($data['last_move_san'] ?? '');
-$lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
+$from = clean_square($data['from'] ?? '');
+$to = clean_square($data['to'] ?? '');
+$promotion = clean_promotion($data['promotion'] ?? '');
+$lastMoveSan = clean_string($data['last_move_san'] ?? '', 32);
+$lastKnownUpdatedAt = clean_string($data['last_known_updated_at'] ?? '', 64);
 
 if (isset($data['fen']) || isset($data['pgn'])) {
-    http_response_code(400);
-    echo json_encode(['error' => 'FEN/PGN are server-managed. Submit coordinates only.']);
-    exit;
+    respond_json(400, ['ok' => false, 'error' => 'FEN/PGN are server-managed. Submit coordinates only.', 'code' => 'server_managed_fields']);
 }
 
 if ($turnstileToken === '') {
-    http_response_code(400);
-    echo json_encode(['error' => 'CAPTCHA token missing']);
-    exit;
+    respond_json(400, ['ok' => false, 'error' => 'CAPTCHA token missing', 'code' => 'captcha_missing']);
 }
 
 if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
-    http_response_code(400);
-    echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
-    exit;
+    respond_json(400, ['ok' => false, 'error' => 'Missing required fields (from, to, last_known_updated_at).', 'code' => 'missing_fields']);
 }
 
 $allowedPromotions = ['q', 'r', 'b', 'n'];
 if ($promotion !== '' && !in_array($promotion, $allowedPromotions, true)) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Invalid promotion piece. Use q, r, b, or n.']);
-    exit;
+    respond_json(400, ['ok' => false, 'error' => 'Invalid promotion piece. Use q, r, b, or n.', 'code' => 'promotion_invalid']);
 }
 
 // Verify Turnstile token before attempting any DB changes.
@@ -159,12 +143,16 @@ function verify_turnstile(string $token): array
 $turnstileResult = verify_turnstile($turnstileToken);
 
 if ($turnstileResult['success'] !== true) {
-    http_response_code(400);
-    echo json_encode([
+    log_event('visitor_move_captcha_fail', [
+        'ip' => client_ip(),
+        'errors' => implode(',', $turnstileResult['errors'] ?? []),
+    ]);
+    respond_json(400, [
+        'ok' => false,
         'error' => 'CAPTCHA verification failed',
         'turnstile_errors' => $turnstileResult['errors'],
+        'code' => 'captcha_failed',
     ]);
-    exit;
 }
 
 $db = null;
@@ -187,36 +175,28 @@ try {
     if (!$game) {
         error_log('visitor_move game_found=0');
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'No active game found.']);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => 'No active game found.', 'code' => 'game_missing']);
     }
 
     $currentStatus = detect_game_over_from_fen($game['fen']);
     if (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false)) {
         finish_game($db, (int)$game['id']);
         $db->commit();
-        http_response_code(409);
-        echo json_encode([
+        respond_json(409, [
             'ok' => false,
             'error' => 'Game is over. Waiting for next game.',
             'code' => 'GAME_OVER',
         ]);
-        exit;
     }
 
     if ($game['turn_color'] === $game['you_color']) {
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'It is not the visitor turn.']);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => 'It is not the visitor turn.', 'code' => 'turn_mismatch']);
     }
 
     if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
         $db->rollBack();
-        http_response_code(409);
-        echo json_encode(['error' => 'Server state changed. Refresh and try again.']);
-        exit;
+        respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
     }
 
     log_event('visitor_move_attempt', [
@@ -250,20 +230,16 @@ try {
 
     if ($lock->rowCount() === 0) {
         $db->rollBack();
-        http_response_code(409);
-        echo json_encode(['error' => 'Move already accepted for this turn']);
-        exit;
+        respond_json(409, ['ok' => false, 'error' => 'Move already accepted for this turn', 'code' => 'turn_locked']);
     }
 
     try {
         $newFen = apply_move_to_fen($game['fen'], $from, $to, $promotion, $game['turn_color']);
     } catch (Throwable $e) {
         $db->rollBack();
-        http_response_code(400);
         $msg = $e->getMessage();
         $clientMessage = stripos((string)$msg, 'promotion') !== false ? $msg : 'Illegal move or invalid coordinates.';
-        echo json_encode(['error' => $clientMessage]);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => $clientMessage, 'code' => 'illegal_move']);
     }
 
     if ($lastMoveSan === '') {
@@ -325,6 +301,14 @@ try {
 
     $updatedGame['id'] = (int)$updatedGame['id'];
 
+    log_event('visitor_move_commit', [
+        'game_id' => $updatedGame['id'],
+        'turn' => $game['turn_color'],
+        'to' => $to,
+        'promotion' => $promotion ?: '-',
+        'status' => $isOver ? 'finished' : 'active',
+    ]);
+
     // Email host the single-use link. DB changes are already committed.
     $emailResult = send_host_turn_email((int)$updatedGame['id'], $hostToken, $expiresAt, $lastMoveSan);
     if (($emailResult['ok'] ?? false) !== true) {
@@ -341,17 +325,17 @@ try {
         $response['warning'] = $warning;
     }
 
-    echo json_encode($response);
+    respond_json(200, $response);
 } catch (RuntimeException $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
-    http_response_code(503);
-    echo json_encode(['error' => $e->getMessage()]);
+    log_event('visitor_move_runtime_error', ['error' => $e->getMessage()]);
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'runtime']);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
-    http_response_code(500);
-    echo json_encode(['error' => 'Failed to save move.']);
+    log_event('visitor_move_error', ['error' => $e->getMessage()]);
+    respond_json(500, ['ok' => false, 'error' => 'Failed to save move.', 'code' => 'server_error']);
 }

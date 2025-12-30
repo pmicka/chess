@@ -1040,7 +1040,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         fetchState({ resetSelection: false, allowQueue: true, silent: true }).catch((err) => {
           console.error('Polling failed', err);
         });
-      }, 15000);
+      }, 20000);
     }
 
     function applyQueuedStateOrFetch() {
