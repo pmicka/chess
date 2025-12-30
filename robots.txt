@@ -1,6 +1,12 @@
 User-agent: *
+# Public chess experience (keep indexable).
 Allow: /chess/
+
+# Host/admin-only or operational endpoints (do not index).
 Disallow: /chess/my_move.php
 Disallow: /chess/api/
+Disallow: /chess/init_db.php
+Disallow: /chess/scripts/
+Disallow: /chess/data/
 
 Sitemap: https://patrickmicka.com/chess/sitemap.xml
