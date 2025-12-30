@@ -29,3 +29,7 @@ if (!defined('DB_PATH')) {
 if (!defined('MAIL_FROM')) {
     define('MAIL_FROM', 'chess@example.com');
 }
+
+if (!defined('ADMIN_RESET_KEY')) {
+    define('ADMIN_RESET_KEY', 'set-a-strong-admin-reset-key');
+}

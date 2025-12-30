@@ -32,6 +32,7 @@ function respond(int $statusCode, array $payload): void
 
 try {
     require_once __DIR__ . '/../db.php';
+    require_once __DIR__ . '/../lib/score.php';
 } catch (Throwable $e) {
     respond(503, ['ok' => false, 'message' => $e->getMessage(), 'code' => 'config']);
 }
@@ -139,6 +140,14 @@ if ($fen === '') {
 $turnColor = $game['turn_color'] ?? '';
 $turn = strtolower($turnColor) === 'white' ? 'w' : (strtolower($turnColor) === 'black' ? 'b' : null);
 
+$scoreTotals = score_load();
+$scoreLineText = sprintf(
+    'overall: host %d · world %d · draws %d',
+    $scoreTotals['host_wins'] ?? 0,
+    $scoreTotals['world_wins'] ?? 0,
+    $scoreTotals['draws'] ?? 0
+);
+
 $response = [
     'ok' => true,
     'id' => (int)$game['id'],
@@ -151,6 +160,8 @@ $response = [
     'pgn' => $game['pgn'] ?? '',
     'last_move_san' => $game['last_move_san'] ?? null,
     'updated_at' => $game['updated_at'] ?? null,
+    'score' => $scoreTotals,
+    'score_line' => $scoreLineText,
     'message' => '',
 ];
 

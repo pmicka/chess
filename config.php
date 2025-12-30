@@ -38,6 +38,12 @@ $applyPlaceholderConfig = function (): void {
     if (!defined('MAIL_FROM')) {
         define('MAIL_FROM', '');
     }
+
+    // Admin reset key used for POST /api/admin_reset.php
+    if (!defined('ADMIN_RESET_KEY')) {
+        $envKey = getenv('ADMIN_RESET_KEY');
+        define('ADMIN_RESET_KEY', $envKey !== false ? $envKey : '');
+    }
 };
 
 $localConfig = __DIR__ . '/config.local.php';

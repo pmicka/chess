@@ -6,12 +6,20 @@
 header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../lib/admin_auth.php';
+
 function respond_json(int $status, array $payload): void
 {
+    global $requestId;
+    $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    $payload['request_id'] = $requestId;
+    $payload['occurred_at'] = $now->format(DateTimeInterface::ATOM);
     http_response_code($status);
     echo json_encode($payload);
     exit;
 }
+
+$requestId = admin_request_id();
 
 try {
     require_once __DIR__ . '/../db.php';
@@ -21,14 +29,13 @@ try {
     respond_json(503, ['error' => $e->getMessage(), 'code' => 'config']);
 }
 
-if (!defined('ADMIN_RESET_KEY') || ADMIN_RESET_KEY === '') {
-    respond_json(503, ['error' => 'Server misconfigured: ADMIN_RESET_KEY not set', 'code' => 'admin_key_missing']);
+$adminResetKey = load_admin_reset_key();
+if ($adminResetKey === '') {
+    respond_json(503, ['error' => 'Server misconfigured: ADMIN_RESET_KEY not set. Define ADMIN_RESET_KEY in config.php/config.local.php or set the ADMIN_RESET_KEY environment variable.', 'code' => 'admin_key_missing']);
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['error' => 'POST required']);
-    exit;
+    respond_json(405, ['error' => 'POST required', 'code' => 'method_not_allowed']);
 }
 
 $usedKeySource = null;
@@ -80,8 +87,8 @@ if ($providedKey === '' || $usedKeySource === null) {
     respond_json(401, ['error' => 'Admin key missing', 'code' => 'admin_key_missing']);
 }
 
-if (!hash_equals(ADMIN_RESET_KEY, $providedKey)) {
-    respond_json(403, ['error' => 'Forbidden', 'code' => 'forbidden']);
+if (!hash_equals($adminResetKey, $providedKey)) {
+    respond_json(403, ['error' => 'Admin key invalid. Reference the request ID when reporting this error.', 'code' => 'forbidden']);
 }
 
 $db = null;
@@ -141,7 +148,7 @@ try {
 
     $db->commit();
 
-    echo json_encode([
+    respond_json(200, [
         'ok' => true,
         'game_id' => $gameId,
         'host_token' => $tokenInfo['token'] ?? null,
@@ -160,6 +167,5 @@ try {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
-    http_response_code(500);
-    echo json_encode(['error' => 'Reset failed.']);
+    respond_json(500, ['error' => 'Reset failed.', 'code' => 'reset_failed']);
 }
