@@ -33,6 +33,7 @@ header('Content-Type: application/json');
 
 try {
     require_once __DIR__ . '/../db.php';
+    require_once __DIR__ . '/../lib/http.php';
 } catch (Throwable $e) {
     http_response_code(503);
     echo json_encode(['error' => $e->getMessage()]);
@@ -54,10 +55,10 @@ function get_request_data(): ?array
 {
     $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
     if (stripos($contentType, 'application/json') !== false) {
-        $raw = file_get_contents('php://input');
-        $decoded = json_decode($raw, true);
-        return is_array($decoded) ? $decoded : null;
-    }
+    $raw = file_get_contents('php://input');
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : null;
+}
 
     if (!empty($_POST)) {
         return $_POST;
@@ -74,17 +75,19 @@ if (!is_array($data)) {
     exit;
 }
 
-$turnstileToken = trim(
+$requestId = request_id();
+
+$turnstileToken = sanitize_string(
     $data['turnstile_token']
     ?? $data['cf-turnstile-response']
     ?? ''
 );
-$from = strtolower(trim($data['from'] ?? ''));
-$to = strtolower(trim($data['to'] ?? ''));
-$promotion = strtolower(trim($data['promotion'] ?? ''));
-$lastMoveSan = trim($data['last_move_san'] ?? '');
-$lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
-$clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
+$from = strtolower(sanitize_string($data['from'] ?? ''));
+$to = strtolower(sanitize_string($data['to'] ?? ''));
+$promotion = strtolower(sanitize_string($data['promotion'] ?? ''));
+$lastMoveSan = sanitize_string($data['last_move_san'] ?? '');
+$lastKnownUpdatedAt = sanitize_string($data['last_known_updated_at'] ?? '');
+$clientFen = isset($data['client_fen']) ? sanitize_string($data['client_fen']) : null;
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     http_response_code(400);
@@ -101,6 +104,12 @@ if ($turnstileToken === '') {
 if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
     http_response_code(400);
     echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
+    exit;
+}
+
+if (preg_match('/^[a-h][1-8]$/', $from) !== 1 || preg_match('/^[a-h][1-8]$/', $to) !== 1) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid square coordinates.']);
     exit;
 }
 
@@ -160,6 +169,11 @@ function verify_turnstile(string $token): array
 $turnstileResult = verify_turnstile($turnstileToken);
 
 if ($turnstileResult['success'] !== true) {
+    log_event('visitor_move_captcha_failed', [
+        'ip' => client_ip(),
+        'errors' => is_array($turnstileResult['errors']) ? implode(',', $turnstileResult['errors']) : null,
+        'request_id' => $requestId,
+    ]);
     http_response_code(400);
     echo json_encode([
         'error' => 'CAPTCHA verification failed',
@@ -227,13 +241,14 @@ try {
         'from' => $from,
         'to' => $to,
         'client_fen_len' => $clientFen !== null ? strlen($clientFen) : null,
+        'request_id' => $requestId,
     ]);
 
-    error_log(sprintf(
-        'visitor_move game_found=1 game_id=%d fen_length=%d',
-        (int)$game['id'],
-        isset($game['fen']) ? strlen((string)$game['fen']) : 0
-    ));
+    log_event('visitor_move_loaded', [
+        'game_id' => $game['id'] ?? null,
+        'fen_length' => isset($game['fen']) ? strlen((string)$game['fen']) : null,
+        'request_id' => $requestId,
+    ]);
 
     // Acquire a lock for this visitor turn. If it already exists, reject.
     // Lock is cleared when the host successfully submits their move (see api/my_move_submit.php).
@@ -297,12 +312,13 @@ try {
         ':id' => $game['id'],
     ]);
 
-    error_log(sprintf(
-        'visitor_move write game=%d fen_len=%d client_fen_len=%s',
-        $game['id'],
-        strlen($newFen),
-        $clientFen !== null ? strlen($clientFen) : 'n/a'
-    ));
+    log_event('visitor_move_saved', [
+        'game_id' => $game['id'] ?? null,
+        'fen_length' => strlen($newFen),
+        'client_fen_len' => $clientFen !== null ? strlen($clientFen) : null,
+        'status' => $isOver ? 'finished' : 'active',
+        'request_id' => $requestId,
+    ]);
 
     $hostToken = null;
     $expiresAt = null;

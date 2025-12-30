@@ -7,19 +7,10 @@ header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../lib/admin_auth.php';
+require_once __DIR__ . '/../lib/http.php';
 
-function respond_json(int $status, array $payload): void
-{
-    global $requestId;
-    $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-    $payload['request_id'] = $requestId;
-    $payload['occurred_at'] = $now->format(DateTimeInterface::ATOM);
-    http_response_code($status);
-    echo json_encode($payload);
-    exit;
-}
-
-$requestId = admin_request_id();
+// Seed the request id early for consistent logging.
+$requestId = request_id();
 
 try {
     require_once __DIR__ . '/../db.php';
@@ -49,13 +40,13 @@ if (!is_array($headers)) {
 $headerKey = '';
 foreach ($headers as $name => $value) {
     if (strcasecmp((string)$name, 'X-Admin-Key') === 0) {
-        $headerKey = (string)$value;
+        $headerKey = sanitize_string($value);
         break;
     }
 }
 
 if ($headerKey === '' && isset($_SERVER['HTTP_X_ADMIN_KEY'])) {
-    $headerKey = (string)$_SERVER['HTTP_X_ADMIN_KEY'];
+    $headerKey = sanitize_string($_SERVER['HTTP_X_ADMIN_KEY']);
 }
 
 if ($headerKey !== '') {
@@ -69,11 +60,11 @@ if ($headerKey !== '') {
         $rawInput = file_get_contents('php://input');
         $decoded = json_decode($rawInput, true);
         if (json_last_error() === JSON_ERROR_NONE && is_array($decoded) && isset($decoded['admin_key'])) {
-            $bodyKey = is_scalar($decoded['admin_key']) ? (string)$decoded['admin_key'] : '';
+            $bodyKey = sanitize_string($decoded['admin_key']);
         }
     } else {
         if (isset($_POST['admin_key'])) {
-            $bodyKey = is_scalar($_POST['admin_key']) ? (string)$_POST['admin_key'] : '';
+            $bodyKey = sanitize_string($_POST['admin_key']);
         }
     }
 
@@ -84,10 +75,21 @@ if ($headerKey !== '') {
 }
 
 if ($providedKey === '' || $usedKeySource === null) {
+    log_event('admin_reset_auth_failed', [
+        'reason' => 'missing_key',
+        'request_id' => $requestId,
+        'ip' => client_ip(),
+    ]);
     respond_json(401, ['error' => 'Admin key missing', 'code' => 'admin_key_missing']);
 }
 
 if (!hash_equals($adminResetKey, $providedKey)) {
+    log_event('admin_reset_auth_failed', [
+        'reason' => 'invalid_key',
+        'request_id' => $requestId,
+        'ip' => client_ip(),
+        'key_source' => $usedKeySource,
+    ]);
     respond_json(403, ['error' => 'Admin key invalid. Reference the request ID when reporting this error.', 'code' => 'forbidden']);
 }
 
@@ -148,6 +150,13 @@ try {
 
     $db->commit();
 
+    log_event('admin_reset_success', [
+        'request_id' => $requestId,
+        'ip' => client_ip(),
+        'game_id' => $gameId ?? null,
+        'key_source' => $usedKeySource,
+    ]);
+
     respond_json(200, [
         'ok' => true,
         'game_id' => $gameId,
@@ -162,10 +171,20 @@ try {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
+    log_event('admin_reset_error', [
+        'request_id' => $requestId,
+        'ip' => client_ip(),
+        'reason' => 'db_path',
+    ]);
     respond_json(503, ['error' => $e->getMessage(), 'code' => 'db_path']);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
+    log_event('admin_reset_error', [
+        'request_id' => $requestId,
+        'ip' => client_ip(),
+        'reason' => 'reset_failed',
+    ]);
     respond_json(500, ['error' => 'Reset failed.', 'code' => 'reset_failed']);
 }

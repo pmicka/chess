@@ -30,6 +30,7 @@ header('Content-Type: application/json');
 
 try {
     require_once __DIR__ . '/../db.php';
+    require_once __DIR__ . '/../lib/http.php';
 } catch (Throwable $e) {
     http_response_code(503);
     echo json_encode(['error' => $e->getMessage()]);
@@ -50,14 +51,16 @@ if (!is_array($data)) {
     $data = [];
 }
 
-$action = strtolower(trim($data['action'] ?? 'submit')) ?: 'submit';
-$tokenValue = trim($data['token'] ?? '');
-$from = strtolower(trim($data['from'] ?? ''));
-$to = strtolower(trim($data['to'] ?? ''));
-$promotion = strtolower(trim($data['promotion'] ?? ''));
-$move = trim($data['move'] ?? '');
-$lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
-$clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
+$requestId = request_id();
+
+$action = strtolower(sanitize_string($data['action'] ?? 'submit')) ?: 'submit';
+$tokenValue = sanitize_string($data['token'] ?? '');
+$from = strtolower(sanitize_string($data['from'] ?? ''));
+$to = strtolower(sanitize_string($data['to'] ?? ''));
+$promotion = strtolower(sanitize_string($data['promotion'] ?? ''));
+$move = sanitize_string($data['move'] ?? '');
+$lastKnownUpdatedAt = sanitize_string($data['last_known_updated_at'] ?? '');
+$clientFen = isset($data['client_fen']) ? sanitize_string($data['client_fen']) : null;
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     http_response_code(400);
@@ -145,11 +148,12 @@ try {
         $db->rollBack();
         $code = $validation['code'] ?? 'invalid';
         $http = $code === 'expired' ? 410 : 403;
-        error_log(sprintf(
-            'my_move_submit auth token_present=1 valid=0 code=%s path=%s',
-            $code,
-            $_SERVER['REQUEST_URI'] ?? 'n/a'
-        ));
+        log_event('host_move_auth', [
+            'valid' => 0,
+            'code' => $code,
+            'request_id' => $requestId,
+            'path' => $_SERVER['REQUEST_URI'] ?? 'n/a',
+        ]);
         http_response_code($http);
         echo json_encode([
             'error' => $code === 'expired' ? 'Token expired' : 'Invalid token',
@@ -159,18 +163,27 @@ try {
     }
 
     $tokenRow = $validation['row'];
-    error_log(sprintf(
-        'my_move_submit auth token_present=1 valid=1 code=%s path=%s',
-        $validation['code'] ?? 'ok',
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
-    ));
+    log_event('host_move_auth', [
+        'valid' => 1,
+        'code' => $validation['code'] ?? 'ok',
+        'request_id' => $requestId,
+        'path' => $_SERVER['REQUEST_URI'] ?? 'n/a',
+        'game_id' => $tokenRow['game_id'] ?? null,
+    ]);
 
-    if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
-        $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
-        exit;
-    }
+if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
+    $db->rollBack();
+    http_response_code(400);
+    echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
+    exit;
+}
+
+if (preg_match('/^[a-h][1-8]$/', $from) !== 1 || preg_match('/^[a-h][1-8]$/', $to) !== 1) {
+    $db->rollBack();
+    http_response_code(400);
+    echo json_encode(['error' => 'Invalid square coordinates.']);
+    exit;
+}
 
     if ($move === '') {
         $db->rollBack();
@@ -228,13 +241,14 @@ try {
         'from' => $from,
         'to' => $to,
         'client_fen_len' => $clientFen !== null ? strlen($clientFen) : null,
+        'request_id' => $requestId,
     ]);
 
-    error_log(sprintf(
-        'my_move_submit game_found=1 game_id=%d fen_length=%d',
-        (int)$game['id'],
-        isset($game['fen']) ? strlen((string)$game['fen']) : 0
-    ));
+    log_event('host_move_loaded', [
+        'game_id' => $game['id'] ?? null,
+        'fen_length' => isset($game['fen']) ? strlen((string)$game['fen']) : null,
+        'request_id' => $requestId,
+    ]);
 
     if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
         $db->rollBack();
@@ -293,12 +307,13 @@ try {
 
     $db->commit();
 
-    error_log(sprintf(
-        'my_move_submit write game=%d fen_len=%d client_fen_len=%s',
-        $game['id'],
-        strlen($newFen),
-        $clientFen !== null ? strlen($clientFen) : 'n/a'
-    ));
+    log_event('host_move_saved', [
+        'game_id' => $game['id'] ?? null,
+        'fen_length' => strlen($newFen),
+        'client_fen_len' => $clientFen !== null ? strlen($clientFen) : null,
+        'status' => $isOver ? 'finished' : 'active',
+        'request_id' => $requestId,
+    ]);
 
     echo json_encode([
         'ok' => true,

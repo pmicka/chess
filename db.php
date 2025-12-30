@@ -48,6 +48,33 @@ function client_ip(): string
 }
 
 /**
+ * Return a stable per-request identifier for logging/tracing.
+ */
+function request_id(): string
+{
+    static $id = null;
+    if ($id !== null) {
+        return $id;
+    }
+
+    $headerId = $_SERVER['HTTP_X_REQUEST_ID'] ?? $_SERVER['HTTP_X_REQUESTID'] ?? '';
+    if (is_string($headerId) && $headerId !== '') {
+        $id = substr(preg_replace('/[^a-zA-Z0-9._-]/', '', $headerId), 0, 64);
+        if ($id !== '') {
+            return $id;
+        }
+    }
+
+    try {
+        $id = bin2hex(random_bytes(8));
+    } catch (Throwable $e) {
+        $id = (string)time();
+    }
+
+    return $id;
+}
+
+/**
  * Redact a token by returning only the suffix (default last 6 characters).
  */
 function token_suffix(string $token, int $length = 6): string
@@ -60,9 +87,18 @@ function token_suffix(string $token, int $length = 6): string
 
 /**
  * Emit a structured error_log line: "event key=value key2=value2".
+ * Includes UTC timestamp and request_id (when available) to aid tracing.
  */
 function log_event(string $event, array $fields = []): void
 {
+    if (!isset($fields['ts'])) {
+        $fields['ts'] = gmdate('c');
+    }
+
+    if (!isset($fields['request_id'])) {
+        $fields['request_id'] = request_id();
+    }
+
     $parts = [$event];
     foreach ($fields as $key => $value) {
         if ($value === null) {

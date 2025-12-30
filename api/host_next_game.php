@@ -8,6 +8,12 @@ header('Content-Type: application/json');
 
 function respond(int $status, array $payload): void
 {
+    if (!isset($payload['request_id'])) {
+        $payload['request_id'] = request_id();
+    }
+    if (!isset($payload['occurred_at'])) {
+        $payload['occurred_at'] = gmdate(DateTimeInterface::ATOM);
+    }
     http_response_code($status);
     echo json_encode($payload);
     exit;
@@ -16,6 +22,7 @@ function respond(int $status, array $payload): void
 try {
     require_once __DIR__ . '/../db.php';
     require_once __DIR__ . '/../lib/score.php';
+    require_once __DIR__ . '/../lib/http.php';
 } catch (Throwable $e) {
     respond(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
 }
@@ -31,7 +38,8 @@ if (!is_array($data)) {
     $data = [];
 }
 
-$tokenValue = trim($data['token'] ?? '');
+$requestId = request_id();
+$tokenValue = sanitize_string($data['token'] ?? '');
 if ($tokenValue === '') {
     respond(401, ['ok' => false, 'error' => 'Token missing', 'code' => 'AUTH_MISSING']);
 }
@@ -47,10 +55,22 @@ try {
         $db->rollBack();
         $code = $validation['code'] ?? 'invalid';
         $http = $code === 'expired' ? 410 : 403;
+        log_event('host_next_game_auth', [
+            'valid' => 0,
+            'code' => $code,
+            'request_id' => $requestId,
+            'token_suffix' => token_suffix($tokenValue),
+        ]);
         respond($http, ['ok' => false, 'error' => 'Invalid token', 'code' => $code]);
     }
 
     $tokenRow = $validation['row'];
+    log_event('host_next_game_auth', [
+        'valid' => 1,
+        'code' => $validation['code'] ?? 'ok',
+        'request_id' => $requestId,
+        'token_suffix' => token_suffix($tokenValue),
+    ]);
     $stmt = $db->prepare("
         SELECT id, host_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
         FROM games
@@ -101,6 +121,13 @@ try {
     $nextGame = create_next_game($db, $game);
 
     $db->commit();
+
+    log_event('host_next_game_created', [
+        'request_id' => $requestId,
+        'previous_game_id' => $gameId,
+        'new_game_id' => $nextGame['id'] ?? null,
+        'result' => $resultLabel ?? 'unknown',
+    ]);
 
     respond(200, [
         'ok' => true,

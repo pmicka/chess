@@ -23,11 +23,11 @@
 header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../lib/http.php';
+
 function respond(int $statusCode, array $payload): void
 {
-    http_response_code($statusCode);
-    echo json_encode($payload);
-    exit;
+    respond_json($statusCode, $payload);
 }
 
 try {
@@ -41,12 +41,12 @@ log_db_path_info('state.php');
 
 try {
     $db = get_db();
-    error_log('state.php db_open=ok');
+    log_event('state_db_open', ['result' => 'ok']);
 } catch (RuntimeException $e) {
-    error_log('state.php db_path=fail: ' . $e->getMessage());
+    log_event('state_db_open', ['result' => 'db_path', 'error' => $e->getMessage()]);
     respond(503, ['ok' => false, 'message' => $e->getMessage(), 'code' => 'db_path']);
 } catch (Throwable $e) {
-    error_log('state.php db_open=fail: ' . $e->getMessage());
+    log_event('state_db_open', ['result' => 'fail', 'error' => $e->getMessage()]);
     respond(500, ['ok' => false, 'message' => 'Database unavailable.', 'code' => 'db_open']);
 }
 
@@ -55,12 +55,15 @@ $tokenValue = isset($_GET['token']) ? trim($_GET['token']) : '';
 $tokenGameId = null;
 $tokenStatus = 'missing';
 $tokenValid = false;
+$requestId = request_id();
 
 if ($tokenProvided && $tokenValue === '') {
-    error_log(sprintf(
-        'state.php auth token_present=1 valid=0 code=missing path=%s',
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
-    ));
+    log_event('state_auth', [
+        'request_id' => $requestId,
+        'valid' => 0,
+        'code' => 'missing',
+        'path' => $_SERVER['REQUEST_URI'] ?? 'n/a',
+    ]);
     respond(401, [
         'ok' => false,
         'message' => 'Token missing.',
@@ -75,11 +78,12 @@ if ($tokenValue !== '') {
 
     if (!$tokenValid) {
         $httpCode = $tokenStatus === 'expired' ? 410 : 403;
-        error_log(sprintf(
-            'state.php auth token_present=1 valid=0 code=%s path=%s',
-            $tokenStatus,
-            $_SERVER['REQUEST_URI'] ?? 'n/a'
-        ));
+        log_event('state_auth', [
+            'request_id' => $requestId,
+            'valid' => 0,
+            'code' => $tokenStatus,
+            'path' => $_SERVER['REQUEST_URI'] ?? 'n/a',
+        ]);
         respond($httpCode, [
             'ok' => false,
             'message' => $tokenStatus === 'expired' ? 'Token expired.' : 'Invalid host token.',
@@ -89,17 +93,20 @@ if ($tokenValue !== '') {
 
     $tokenRow = $validation['row'] ?? null;
     $tokenGameId = $tokenRow ? (int)$tokenRow['game_id'] : null;
-    error_log(sprintf(
-        'state.php auth token_present=1 valid=1 code=%s path=%s',
-        $tokenStatus,
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
-    ));
+    log_event('state_auth', [
+        'request_id' => $requestId,
+        'valid' => 1,
+        'code' => $tokenStatus,
+        'path' => $_SERVER['REQUEST_URI'] ?? 'n/a',
+        'game_id' => $tokenGameId,
+    ]);
 } else {
-    error_log(sprintf(
-        'state.php auth token_present=0 valid=0 code=%s path=%s',
-        $tokenStatus,
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
-    ));
+    log_event('state_auth', [
+        'request_id' => $requestId,
+        'valid' => 0,
+        'code' => $tokenStatus,
+        'path' => $_SERVER['REQUEST_URI'] ?? 'n/a',
+    ]);
 }
 
 if ($tokenGameId !== null) {
@@ -122,16 +129,17 @@ if ($tokenGameId !== null) {
 }
 
 if (!$game) {
-    error_log('state.php game_found=0');
+    log_event('state_load', ['request_id' => $requestId, 'found' => 0]);
     respond(500, ['ok' => false, 'message' => 'No game found. Run init_db.php.', 'code' => 'game_not_found']);
 }
 
 $fen = isset($game['fen']) ? trim((string)$game['fen']) : '';
-error_log(sprintf(
-    'state.php game_found=1 game_id=%d fen_length=%d',
-    (int)$game['id'],
-    strlen($fen)
-));
+log_event('state_load', [
+    'request_id' => $requestId,
+    'found' => 1,
+    'game_id' => (int)$game['id'],
+    'fen_length' => strlen($fen),
+]);
 
 if ($fen === '') {
     respond(500, ['ok' => false, 'message' => 'FEN unavailable.', 'code' => 'fen_missing']);
