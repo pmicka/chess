@@ -31,10 +31,12 @@ try {
 
 $adminResetKey = load_admin_reset_key();
 if ($adminResetKey === '') {
+    log_event('admin_reset_blocked', ['reason' => 'missing_key', 'ip' => client_ip()]);
     respond_json(503, ['error' => 'Server misconfigured: ADMIN_RESET_KEY not set. Define ADMIN_RESET_KEY in config.php/config.local.php or set the ADMIN_RESET_KEY environment variable.', 'code' => 'admin_key_missing']);
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    log_event('admin_reset_blocked', ['reason' => 'method_not_post', 'ip' => client_ip()]);
     respond_json(405, ['error' => 'POST required', 'code' => 'method_not_allowed']);
 }
 
@@ -84,10 +86,12 @@ if ($headerKey !== '') {
 }
 
 if ($providedKey === '' || $usedKeySource === null) {
+    log_event('admin_reset_blocked', ['reason' => 'key_missing', 'ip' => client_ip()]);
     respond_json(401, ['error' => 'Admin key missing', 'code' => 'admin_key_missing']);
 }
 
 if (!hash_equals($adminResetKey, $providedKey)) {
+    log_event('admin_reset_blocked', ['reason' => 'invalid_key', 'ip' => client_ip()]);
     respond_json(403, ['error' => 'Admin key invalid. Reference the request ID when reporting this error.', 'code' => 'forbidden']);
 }
 
@@ -147,6 +151,13 @@ try {
     $tokenInfo = ensure_host_move_token($db, $gameId);
 
     $db->commit();
+
+    log_event('admin_reset_success', [
+        'game_id' => $gameId,
+        'token_suffix' => token_suffix($tokenInfo['token'] ?? ''),
+        'key_source' => $usedKeySource,
+        'ip' => client_ip(),
+    ]);
 
     respond_json(200, [
         'ok' => true,

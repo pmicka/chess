@@ -64,6 +64,15 @@ function token_suffix(string $token, int $length = 6): string
 function log_event(string $event, array $fields = []): void
 {
     $parts = [$event];
+
+    // Attach request metadata when available.
+    if (!array_key_exists('request_id', $fields) && function_exists('request_id')) {
+        $fields['request_id'] = request_id();
+    }
+    if (!array_key_exists('ts', $fields)) {
+        $fields['ts'] = gmdate('c');
+    }
+
     foreach ($fields as $key => $value) {
         if ($value === null) {
             continue;

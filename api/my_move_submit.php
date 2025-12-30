@@ -27,22 +27,15 @@
 
 header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
+require_once __DIR__ . '/../lib/http.php';
 
 try {
     require_once __DIR__ . '/../db.php';
 } catch (Throwable $e) {
-    http_response_code(503);
-    echo json_encode(['error' => $e->getMessage()]);
-    exit;
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
 }
 log_db_path_info('my_move_submit');
-
-// MVP: no token required. We only accept POST requests with JSON (or form) payload.
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['error' => 'POST required']);
-    exit;
-}
+require_post();
 
 $input = file_get_contents('php://input');
 $data = json_decode($input, true);
@@ -50,24 +43,20 @@ if (!is_array($data)) {
     $data = [];
 }
 
-$action = strtolower(trim($data['action'] ?? 'submit')) ?: 'submit';
-$tokenValue = trim($data['token'] ?? '');
-$from = strtolower(trim($data['from'] ?? ''));
-$to = strtolower(trim($data['to'] ?? ''));
-$promotion = strtolower(trim($data['promotion'] ?? ''));
-$move = trim($data['move'] ?? '');
-$lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
+$action = strtolower(clean_string($data['action'] ?? 'submit', 16)) ?: 'submit';
+$tokenValue = clean_string($data['token'] ?? '', 256);
+$from = clean_square($data['from'] ?? '');
+$to = clean_square($data['to'] ?? '');
+$promotion = clean_promotion($data['promotion'] ?? '');
+$move = clean_string($data['move'] ?? '', 32);
+$lastKnownUpdatedAt = clean_string($data['last_known_updated_at'] ?? '', 64);
 
 if (isset($data['fen']) || isset($data['pgn'])) {
-    http_response_code(400);
-    echo json_encode(['error' => 'FEN/PGN are server-managed. Submit coordinates only.']);
-    exit;
+    respond_json(400, ['ok' => false, 'error' => 'FEN/PGN are server-managed. Submit coordinates only.', 'code' => 'server_managed_fields']);
 }
 
 if ($tokenValue === '' && $action !== 'resend') {
-    http_response_code(401);
-    echo json_encode(['error' => 'Token missing', 'code' => 'AUTH_MISSING']);
-    exit;
+    respond_json(401, ['ok' => false, 'error' => 'Token missing', 'code' => 'AUTH_MISSING']);
 }
 
 $db = null;
@@ -111,9 +100,7 @@ try {
 
         if (!$game) {
             $db->rollBack();
-            http_response_code(400);
-            echo json_encode(['ok' => false, 'error' => 'No active host turn available.']);
-            exit;
+            respond_json(400, ['ok' => false, 'error' => 'No active host turn available.', 'code' => 'host_turn_missing']);
         }
 
         $expiry = default_host_token_expiry();
@@ -127,14 +114,14 @@ try {
             'ok' => ($emailResult['ok'] ?? false) === true,
             'token' => $freshToken,
             'message' => ($emailResult['ok'] ?? false) === true ? 'Sent.' : 'Email failed.',
+            'code' => ($emailResult['ok'] ?? false) === true ? 'sent' : 'email_failed',
         ];
 
         if (($emailResult['ok'] ?? false) !== true) {
             $response['error'] = $emailResult['warning'] ?? 'Failed to send email.';
         }
 
-        echo json_encode($response);
-        exit;
+        respond_json(200, $response);
     }
 
     $db->beginTransaction();
@@ -149,12 +136,15 @@ try {
             $code,
             $_SERVER['REQUEST_URI'] ?? 'n/a'
         ));
-        http_response_code($http);
-        echo json_encode([
+        log_event('host_move_auth_fail', [
+            'token_suffix' => token_suffix($tokenValue),
+            'code' => $code,
+            'ip' => client_ip(),
+        ]);
+        respond_json($http, [
             'error' => $code === 'expired' ? 'Token expired' : 'Invalid token',
             'code' => $code === 'expired' ? 'AUTH_EXPIRED' : 'AUTH_INVALID',
         ]);
-        exit;
     }
 
     $tokenRow = $validation['row'];
@@ -166,24 +156,18 @@ try {
 
     if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'Missing required fields (from, to, last_known_updated_at).']);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => 'Missing required fields (from, to, last_known_updated_at).', 'code' => 'missing_fields']);
     }
 
     if ($move === '') {
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'Move notation is required.']);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => 'Move notation is required.', 'code' => 'move_missing']);
     }
 
     $allowedPromotions = ['q', 'r', 'b', 'n'];
     if ($promotion !== '' && !in_array($promotion, $allowedPromotions, true)) {
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'Invalid promotion piece. Use q, r, b, or n.']);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => 'Invalid promotion piece. Use q, r, b, or n.', 'code' => 'promotion_invalid']);
     }
 
     $stmt = $db->prepare("
@@ -198,25 +182,19 @@ try {
     if (!$game) {
         error_log('my_move_submit game_found=0');
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'No active game found.']);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => 'No active game found.', 'code' => 'game_missing']);
     }
 
     $currentStatus = detect_game_over_from_fen($game['fen']);
     if (($game['status'] ?? '') !== 'active' || (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false))) {
         finish_game($db, (int)$game['id']);
         $db->commit();
-        http_response_code(409);
-        echo json_encode(['error' => 'Game is over. Waiting for next game.', 'code' => 'GAME_OVER']);
-        exit;
+        respond_json(409, ['ok' => false, 'error' => 'Game is over. Waiting for next game.', 'code' => 'GAME_OVER']);
     }
 
     if ($game['turn_color'] !== $game['host_color']) {
         $db->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'It is not the host turn.']);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => 'It is not the host turn.', 'code' => 'turn_mismatch']);
     }
 
     log_event('host_move_attempt', [
@@ -236,20 +214,16 @@ try {
 
     if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
         $db->rollBack();
-        http_response_code(409);
-        echo json_encode(['error' => 'Server state changed. Refresh and try again.']);
-        exit;
+        respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
     }
 
     try {
         $newFen = apply_move_to_fen($game['fen'], $from, $to, $promotion, $game['turn_color']);
     } catch (Throwable $e) {
         $db->rollBack();
-        http_response_code(400);
         $msg = $e->getMessage();
         $clientMessage = stripos((string)$msg, 'promotion') !== false ? $msg : 'Illegal move or invalid coordinates.';
-        echo json_encode(['error' => $clientMessage]);
-        exit;
+        respond_json(400, ['ok' => false, 'error' => $clientMessage, 'code' => 'illegal_move']);
     }
 
     $newPgn = append_pgn_move($game['pgn'] ?? '', $game['host_color'], $move, $newFen);
@@ -297,7 +271,16 @@ try {
         strlen($newFen)
     ));
 
-    echo json_encode([
+    log_event('host_move_commit', [
+        'game_id' => $game['id'],
+        'turn' => $game['turn_color'],
+        'to' => $to,
+        'promotion' => $promotion ?: '-',
+        'status' => $isOver ? 'finished' : 'active',
+        'token_suffix' => token_suffix($tokenValue),
+    ]);
+
+    respond_json(200, [
         'ok' => true,
         'game_id' => (int)$game['id'],
         'next_turn' => $nextTurn,
@@ -307,12 +290,12 @@ try {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
-    http_response_code(503);
-    echo json_encode(['error' => $e->getMessage()]);
+    log_event('host_move_runtime_error', ['error' => $e->getMessage()]);
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'runtime']);
 } catch (Throwable $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();
     }
-    http_response_code(500);
-    echo json_encode(['error' => 'Failed to save move.']);
+    log_event('host_move_error', ['error' => $e->getMessage()]);
+    respond_json(500, ['ok' => false, 'error' => 'Failed to save move.', 'code' => 'server_error']);
 }
