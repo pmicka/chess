@@ -84,7 +84,6 @@ $to = strtolower(trim($data['to'] ?? ''));
 $promotion = strtolower(trim($data['promotion'] ?? ''));
 $lastMoveSan = trim($data['last_move_san'] ?? '');
 $lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
-$clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     http_response_code(400);
@@ -226,7 +225,6 @@ try {
         'turn' => $game['turn_color'] ?? null,
         'from' => $from,
         'to' => $to,
-        'client_fen_len' => $clientFen !== null ? strlen($clientFen) : null,
     ]);
 
     error_log(sprintf(
@@ -298,10 +296,9 @@ try {
     ]);
 
     error_log(sprintf(
-        'visitor_move write game=%d fen_len=%d client_fen_len=%s',
+        'visitor_move write game=%d fen_len=%d',
         $game['id'],
-        strlen($newFen),
-        $clientFen !== null ? strlen($clientFen) : 'n/a'
+        strlen($newFen)
     ));
 
     $hostToken = null;

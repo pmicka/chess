@@ -57,7 +57,6 @@ $to = strtolower(trim($data['to'] ?? ''));
 $promotion = strtolower(trim($data['promotion'] ?? ''));
 $move = trim($data['move'] ?? '');
 $lastKnownUpdatedAt = trim($data['last_known_updated_at'] ?? '');
-$clientFen = isset($data['client_fen']) ? trim($data['client_fen']) : null;
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     http_response_code(400);
@@ -227,7 +226,6 @@ try {
         'token_suffix' => token_suffix($tokenValue),
         'from' => $from,
         'to' => $to,
-        'client_fen_len' => $clientFen !== null ? strlen($clientFen) : null,
     ]);
 
     error_log(sprintf(
@@ -294,10 +292,9 @@ try {
     $db->commit();
 
     error_log(sprintf(
-        'my_move_submit write game=%d fen_len=%d client_fen_len=%s',
+        'my_move_submit write game=%d fen_len=%d',
         $game['id'],
-        strlen($newFen),
-        $clientFen !== null ? strlen($clientFen) : 'n/a'
+        strlen($newFen)
     ));
 
     echo json_encode([

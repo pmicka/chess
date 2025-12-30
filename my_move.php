@@ -928,7 +928,6 @@ $scoreLineText = sprintf(
         move: pendingMove.san,
         token: hostToken,
         last_known_updated_at: lastUpdatedTs,
-        client_fen: game.fen(),
       };
 
       try {
