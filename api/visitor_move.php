@@ -328,35 +328,20 @@ try {
 
     $updatedGame['id'] = (int)$updatedGame['id'];
 
+    // Email host the single-use link. DB changes are already committed.
+    $emailResult = send_host_turn_email((int)$updatedGame['id'], $hostToken, $expiresAt, $lastMoveSan);
+    if (($emailResult['ok'] ?? false) !== true) {
+        $warning = $emailResult['warning'] ?? 'Email failed';
+    }
+
     $response = [
         'ok' => true,
         'game' => $updatedGame,
         'message' => 'Move accepted. Waiting for host.',
     ];
 
-    // Email host the single-use link. DB changes are already committed.
-    if (!$isOver) {
-        if ($hostToken === null || $hostToken === '') {
-            http_response_code(500);
-            echo json_encode([
-                'ok' => false,
-                'error' => 'Host token missing. Email notification skipped.',
-                'game' => $updatedGame,
-            ]);
-            exit;
-        }
-
-        $emailResult = send_host_turn_email((int)$updatedGame['id'], $hostToken, $expiresAt, $lastMoveSan);
-        if (($emailResult['ok'] ?? false) !== true) {
-            http_response_code(500);
-            echo json_encode([
-                'ok' => false,
-                'error' => 'Email notification failed',
-                'diagnostic' => $emailResult['warning'] ?? $emailResult['diagnostic'] ?? null,
-                'game' => $updatedGame,
-            ]);
-            exit;
-        }
+    if ($warning !== null) {
+        $response['warning'] = $warning;
     }
 
     echo json_encode($response);
