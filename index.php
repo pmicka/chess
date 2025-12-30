@@ -276,6 +276,12 @@ if (!empty($preloadedGame['visitor_color'])) {
       const game = new Chess();
       const uiHelpers = window.ChessUI || {};
       const filesBase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+      const VIEW_STATE_KEYS = {
+        mode: 'chess_viewMode',
+        selected: 'chess_selectedPly',
+        ts: 'chess_viewStateTs',
+      };
+      const VIEW_STATE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
       let state = null;
       let visitorColor = appConfig.orient || 'black';
       let hostColor = visitorColor === 'white' ? 'black' : 'white';
@@ -295,6 +301,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       let notationElements = null;
       let notationData = { fen: '', pgn: '' };
       let historyState = null;
+      let viewState = { mode: 'live', selectedPly: 0, latestPly: 0 };
       let turnstileToken = null;
 
       const stateStore = {
@@ -306,6 +313,73 @@ if (!empty($preloadedGame['visitor_color'])) {
         },
         get() { return this.current; },
       };
+
+      function persistViewState() {
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+          sessionStorage.setItem(VIEW_STATE_KEYS.mode, viewState.mode);
+          sessionStorage.setItem(VIEW_STATE_KEYS.selected, String(viewState.selectedPly));
+          sessionStorage.setItem(VIEW_STATE_KEYS.ts, String(Date.now()));
+        } catch (err) {
+          // ignore storage failures
+        }
+      }
+
+      function restoreViewState() {
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+          const tsRaw = sessionStorage.getItem(VIEW_STATE_KEYS.ts);
+          const ts = Number(tsRaw);
+          if (!Number.isFinite(ts) || (Date.now() - ts) > VIEW_STATE_MAX_AGE_MS) {
+            return;
+          }
+          const mode = sessionStorage.getItem(VIEW_STATE_KEYS.mode);
+          const selectedRaw = sessionStorage.getItem(VIEW_STATE_KEYS.selected);
+          const selected = Number(selectedRaw);
+          if (mode === 'live' || mode === 'review') {
+            viewState.mode = mode;
+          }
+          if (Number.isFinite(selected) && selected >= 0) {
+            viewState.selectedPly = selected;
+          }
+        } catch (err) {
+          // ignore storage failures
+        }
+      }
+
+      function clampSelectedPly(idx) {
+        const h = historyState;
+        const latest = Number.isFinite(viewState.latestPly) ? viewState.latestPly : (h ? h.liveIndex : 0);
+        const maxIdx = h && Array.isArray(h.timeline) ? h.timeline.length - 1 : latest;
+        const limit = Math.max(0, Number.isFinite(maxIdx) ? maxIdx : 0);
+        if (!Number.isFinite(idx)) return limit;
+        return Math.max(0, Math.min(idx, limit));
+      }
+
+      function getSelectedHistoryIndex() {
+        return clampSelectedPly(viewState.selectedPly);
+      }
+
+      function isHistoryLiveView() {
+        const h = historyState;
+        if (!h) return false;
+        return viewState.mode === 'live' && getSelectedHistoryIndex() === h.liveIndex;
+      }
+
+      function isTypingContext(ev) {
+        const target = ev && ev.target;
+        if (!target) return false;
+        const tag = (target.tagName || '').toLowerCase();
+        const editable = target.isContentEditable;
+        return editable || tag === 'input' || tag === 'textarea' || tag === 'select';
+      }
+
+      function updateViewState(partial = {}) {
+        viewState = { ...viewState, ...partial };
+        persistViewState();
+      }
+
+      restoreViewState();
 
       window.onTurnstileSuccess = (token) => { turnstileToken = token; };
       window.onTurnstileExpired = () => { turnstileToken = null; };
@@ -547,7 +621,7 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       function onSquareClick(opaqueSquareId) {
         if (!state) return;
-        if (historyState && !historyState.isLive) {
+        if (historyState && !isHistoryLiveView()) {
           setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
           return;
         }
@@ -700,7 +774,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         if (!isSubmitting && pendingMove && !selectionIsStale) {
           btnSubmit.disabled = false;
         }
-        if (historyState && !historyState.isLive) {
+        if (historyState && !isHistoryLiveView()) {
           btnSubmit.disabled = true;
         }
       }
@@ -784,7 +858,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       function updateStatusMessage() {
         if (!state) return;
 
-        if (historyState && !historyState.isLive) {
+        if (historyState && !isHistoryLiveView()) {
           setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
           boardEl.classList.add('locked');
           return;
@@ -866,22 +940,29 @@ if (!empty($preloadedGame['visitor_color'])) {
         try {
           const timeline = buildHistoryTimeline(initialFen, movesPgn);
           const liveIndex = Math.max(0, timeline.length - 1);
+          const maxIdx = Math.max(0, timeline.length - 1);
+          const desiredIdx = viewState.mode === 'live'
+            ? liveIndex
+            : Math.max(0, Math.min(viewState.selectedPly, maxIdx));
+          updateViewState({
+            latestPly: liveIndex,
+            selectedPly: viewState.mode === 'live' ? liveIndex : desiredIdx,
+          });
           historyState = {
             timeline,
-            idx: liveIndex,
             liveIndex,
-            get isLive() { return this.idx === this.liveIndex; },
+            idx: getSelectedHistoryIndex(),
+            get isLive() { return isHistoryLiveView(); },
           };
-          historyStatus.textContent = 'Live';
-          historyStatus.className = 'muted';
-          resetHistoryNotice();
-          return timeline[liveIndex] || fallbackFen;
+          updateHistoryUI();
+          return timeline[getSelectedHistoryIndex()] || fallbackFen;
         } catch (err) {
           const message = err && err.message ? err.message : String(err);
           historyStatus.textContent = `History unavailable: ${message}`;
           historyStatus.className = 'error';
           console.error('History reconstruction failed', err);
           historyState = null;
+          updateViewState({ mode: 'live', selectedPly: 0, latestPly: 0 });
           resetHistoryNotice();
           return fallbackFen;
         }
@@ -894,37 +975,45 @@ if (!empty($preloadedGame['visitor_color'])) {
           if (btnForward) btnForward.disabled = true;
           if (btnLive) btnLive.disabled = true;
           resetHistoryNotice();
+          boardEl.classList.remove('history-locked');
           return;
         }
-        if (btnBack) btnBack.disabled = h.idx <= 0;
-        if (btnForward) btnForward.disabled = h.idx >= h.timeline.length - 1;
-        if (btnLive) btnLive.disabled = h.isLive;
+        const selectedIdx = getSelectedHistoryIndex();
+        const isLive = isHistoryLiveView();
+        historyState.idx = selectedIdx;
+        if (btnBack) btnBack.disabled = selectedIdx <= 0;
+        if (btnForward) btnForward.disabled = selectedIdx >= h.timeline.length - 1;
+        if (btnLive) btnLive.disabled = isLive;
         const statusText = h.timeline.length > 1
-          ? (h.isLive ? 'Live' : `Move ${h.idx} of ${h.timeline.length - 1}`)
+          ? (isLive ? 'Live' : `Move ${selectedIdx} of ${h.timeline.length - 1}`)
           : 'Live';
         historyStatus.textContent = statusText;
-        historyStatus.className = h.isLive ? 'muted' : 'ok';
+        historyStatus.className = isLive ? 'muted' : 'ok';
         if (historyNotice) {
-          historyNotice.classList.toggle('show', !h.isLive);
+          historyNotice.classList.toggle('show', !isLive);
         }
-        boardEl.classList.toggle('history-locked', Boolean(h && !h.isLive));
-        if (!h.isLive) {
+        boardEl.classList.toggle('history-locked', Boolean(h && !isLive));
+        if (!isLive) {
           btnSubmit.disabled = true;
         }
       }
 
-      function applyHistoryPosition(targetIdx, { forceRender = false } = {}) {
+      function renderHistoryPosition({ forceRender = false } = {}) {
         const h = historyState;
         if (!h || !Array.isArray(h.timeline) || !h.timeline.length) {
           return;
         }
-        const clamped = Math.max(0, Math.min(targetIdx, h.timeline.length - 1));
-        if (!forceRender && clamped === h.idx) {
+        const clamped = clampSelectedPly(viewState.selectedPly);
+        if (clamped !== viewState.selectedPly) {
+          updateViewState({ selectedPly: clamped });
+        }
+        historyState.idx = clamped;
+        const targetFen = h.timeline[clamped];
+        if (!forceRender && targetFen === game.fen()) {
           updateHistoryUI();
+          updateStatusMessage();
           return;
         }
-        h.idx = clamped;
-        const targetFen = h.timeline[clamped];
         try {
           game.load(targetFen);
         } catch (err) {
@@ -936,10 +1025,31 @@ if (!empty($preloadedGame['visitor_color'])) {
           return;
         }
         clearSelection();
-        lastMoveSquares = null;
+        lastMoveSquares = isHistoryLiveView() ? deriveLastMoveSquares(state) : null;
         renderBoard();
         updateStatusMessage();
         updateHistoryUI();
+      }
+
+      function applyHistoryPosition(targetIdx, { forceRender = false, mode = null, allowAutoLive = false } = {}) {
+        const h = historyState;
+        if (!h || !Array.isArray(h.timeline) || !h.timeline.length) {
+          return;
+        }
+        const latest = h.liveIndex;
+        let nextMode = mode || viewState.mode || 'live';
+        let clamped = clampSelectedPly(targetIdx);
+        if (nextMode === 'live') {
+          clamped = latest;
+        } else if (allowAutoLive && clamped >= latest) {
+          nextMode = 'live';
+          clamped = latest;
+        }
+        updateViewState({
+          mode: nextMode,
+          selectedPly: clamped,
+        });
+        renderHistoryPosition({ forceRender });
       }
 
       function setNotationData({ fen = '', pgn = '' }) {
@@ -1059,15 +1169,22 @@ if (!empty($preloadedGame['visitor_color'])) {
         setNotationData({ fen: canonicalState.fen, pgn: canonicalState.pgn });
 
         const fenFromHistory = syncHistoryFromState(canonicalState);
-        const fenToLoad = fenFromHistory || canonicalState.fen;
+        const selectedIdx = getSelectedHistoryIndex();
+        const fenToLoad = (historyState && Array.isArray(historyState.timeline) && historyState.timeline[selectedIdx])
+          ? historyState.timeline[selectedIdx]
+          : (fenFromHistory || canonicalState.fen);
+        const shouldRenderPosition = (viewState.mode === 'live') || (fenToLoad !== game.fen());
 
-        try {
-          game.load(fenToLoad);
-        } catch (err) {
-          blockForStateError('Invalid FEN from server. Refresh later.');
-          return;
+        if (shouldRenderPosition) {
+          try {
+            game.load(fenToLoad);
+          } catch (err) {
+            blockForStateError('Invalid FEN from server. Refresh later.');
+            return;
+          }
         }
-        lastMoveSquares = deriveLastMoveSquares(canonicalState);
+        const liveSquares = deriveLastMoveSquares(canonicalState);
+        lastMoveSquares = isHistoryLiveView() ? liveSquares : null;
 
         const detected = computeGameOverFromFen(fenToLoad);
         const forcedOver = canonicalState.status && canonicalState.status !== 'active';
@@ -1078,7 +1195,9 @@ if (!empty($preloadedGame['visitor_color'])) {
         });
 
         debugBox.textContent = `game_id=${canonicalState.id} status=${canonicalState.status} updated_at=${canonicalState.updated_at}`;
-        renderBoard();
+        if (shouldRenderPosition) {
+          renderBoard();
+        }
 
         updateStatusMessage();
 
@@ -1180,25 +1299,44 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       if (btnBack) {
         btnBack.addEventListener('click', () => {
-          const h = historyState;
-          const next = h ? h.idx - 1 : 0;
-          applyHistoryPosition(next);
+          const next = getSelectedHistoryIndex() - 1;
+          applyHistoryPosition(next, { forceRender: true, mode: 'review' });
         });
       }
       if (btnForward) {
         btnForward.addEventListener('click', () => {
-          const h = historyState;
-          const next = h ? h.idx + 1 : 0;
-          applyHistoryPosition(next);
+          const next = getSelectedHistoryIndex() + 1;
+          applyHistoryPosition(next, { forceRender: true, mode: 'review', allowAutoLive: true });
         });
       }
       if (btnLive) {
         btnLive.addEventListener('click', () => {
           const h = historyState;
           const next = h ? h.liveIndex : 0;
-          applyHistoryPosition(next, { forceRender: true });
+          applyHistoryPosition(next, { forceRender: true, mode: 'live' });
         });
       }
+
+      document.addEventListener('keydown', (ev) => {
+        if (isTypingContext(ev)) return;
+        if (ev.key === 'ArrowLeft') {
+          ev.preventDefault();
+          const next = getSelectedHistoryIndex() - 1;
+          applyHistoryPosition(next, { forceRender: true, mode: 'review' });
+        } else if (ev.key === 'ArrowRight') {
+          ev.preventDefault();
+          const next = getSelectedHistoryIndex() + 1;
+          applyHistoryPosition(next, { forceRender: true, mode: 'review', allowAutoLive: true });
+        } else if (ev.key === 'Home') {
+          ev.preventDefault();
+          applyHistoryPosition(0, { forceRender: true, mode: 'review' });
+        } else if (ev.key === 'End') {
+          ev.preventDefault();
+          const h = historyState;
+          const latest = h ? h.liveIndex : viewState.latestPly;
+          applyHistoryPosition(latest, { forceRender: true, mode: 'live' });
+        }
+      });
 
       btnRefresh.addEventListener('click', applyQueuedStateOrFetch);
       btnBannerRefresh.addEventListener('click', applyQueuedStateOrFetch);
@@ -1208,7 +1346,7 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       btnSubmit.addEventListener('click', async () => {
         if (!pendingMove || !state) return;
-        if (historyState && !historyState.isLive) {
+        if (historyState && !isHistoryLiveView()) {
           setStatus('Reviewing history — click Live to return before submitting a move.', 'error');
           return;
         }
