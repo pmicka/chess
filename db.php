@@ -22,6 +22,7 @@ if (!file_exists(__DIR__ . '/config.php')) {
     throw new RuntimeException('Missing config.php. Copy config.example.php to config.php and fill in your values.');
 }
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/mail.php';
 
 // Ensure required constants exist so the rest of the app can rely on them.
 $requiredConstants = [
@@ -902,6 +903,7 @@ function apply_move_to_fen(string $fen, string $from, string $to, string $promot
 function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface $expiresAt, string $lastMoveSan): array
 {
     $warning = null;
+    $diagnostic = null;
 
     $link = BASE_URL . '/my_move.php?token=' . urlencode($hostToken);
     $subject = 'Your turn — Me vs the World Chess';
@@ -910,36 +912,43 @@ function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface
         . "Link: {$link}\n"
         . "Token expires at: " . ($expiresAt instanceof DateTimeInterface ? $expiresAt->format('Y-m-d H:i:s T') : 'n/a') . "\n";
 
-    $emailHeaders = 'From: ' . MAIL_FROM . "\r\n";
-
     $tokenSuffix = token_suffix($hostToken);
 
-    try {
-        $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
-        if ($mailSent === false) {
-            $warning = 'Email failed';
+    if ($hostToken === '') {
+        $warning = 'Missing host token';
+    } else {
+        $mailResult = send_notification_email(
+            YOUR_EMAIL,
+            MAIL_FROM,
+            $subject,
+            $body,
+            [
+                'reply_to' => MAIL_FROM,
+                'envelope_from' => MAIL_FROM,
+                'context' => [
+                    'game_id' => $gameId,
+                    'token_suffix' => $tokenSuffix,
+                    'last_move' => $lastMoveSan,
+                ],
+            ]
+        );
+
+        if (($mailResult['ok'] ?? false) !== true) {
+            $warning = $mailResult['error'] ?? 'Email failed';
+            $diagnostic = $mailResult['diagnostic'] ?? null;
         }
-    } catch (Throwable $mailErr) {
-        $warning = 'Email failed';
     }
 
     log_event('email_host_turn', [
         'game_id' => $gameId,
         'token_suffix' => $tokenSuffix,
         'result' => $warning === null ? 'sent' : 'failed',
+        'diag' => $diagnostic,
     ]);
-
-    if ($warning !== null) {
-        $logLine = sprintf(
-            "[%s] Failed to send host turn email for game_id=%d\n",
-            datetime_utc()->format('Y-m-d H:i:s'),
-            $gameId
-        );
-        @file_put_contents(__DIR__ . '/data/email.log', $logLine, FILE_APPEND);
-    }
 
     return [
         'ok' => $warning === null,
         'warning' => $warning,
+        'diagnostic' => $diagnostic,
     ];
 }

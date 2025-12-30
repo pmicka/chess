@@ -132,6 +132,7 @@ try {
 
         if (($emailResult['ok'] ?? false) !== true) {
             $response['error'] = $emailResult['warning'] ?? 'Failed to send email.';
+            $response['diagnostic'] = $emailResult['diagnostic'] ?? null;
         }
 
         echo json_encode($response);
