@@ -130,11 +130,10 @@ $scoreLineText = sprintf(
 
     <div id="completionCard" class="card state-card" style="display:none;">
       <h2>Move submitted</h2>
-      <p>Your move has been recorded.<br>This link is single-use, so you’re all done here.<br>You’ll be redirected back to the game shortly.</p>
-      <p id="redirectNote" class="muted">Redirecting in <span id="redirectCountdown">5</span> seconds…</p>
+      <p>Your move has been recorded.<br>This link is single-use, so you’re all done here.<br>We’ll return you to the game view.</p>
+      <p id="redirectNote" class="muted">Redirecting to the game…</p>
       <div class="controls">
-        <a class="button-link" href="index.php">Return to game now</a>
-        <button id="cancelRedirect" type="button">Cancel redirect</button>
+        <a class="button-link" id="returnToGameLink" href="index.php">Return to game</a>
       </div>
     </div>
 
@@ -209,7 +208,7 @@ $scoreLineText = sprintf(
           <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
         </div>
         <p class="muted mono" id="debugBox"></p>
-        <p class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
+        <p id="hostScoreLine" class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
       </div>
     </div>
   </div>
@@ -227,9 +226,8 @@ $scoreLineText = sprintf(
     const mainContent = document.getElementById('mainContent');
     const completionCard = document.getElementById('completionCard');
     const expiredCard = document.getElementById('expiredCard');
-    const redirectCountdownEl = document.getElementById('redirectCountdown');
     const redirectNote = document.getElementById('redirectNote');
-    const cancelRedirectBtn = document.getElementById('cancelRedirect');
+    const returnToGameLink = document.getElementById('returnToGameLink');
     const btnResendExpired = document.getElementById('btnResendExpired');
     const resendStatusExpired = document.getElementById('resendStatusExpired');
     const btnRefresh = document.getElementById('btnRefresh');
@@ -251,6 +249,7 @@ $scoreLineText = sprintf(
     const copyPgnMsg = document.getElementById('copyPgnMsg');
     const debugBox = document.getElementById('debugBox');
     const lastUpdatedEl = document.getElementById('lastUpdated');
+    const hostScoreLine = document.getElementById('hostScoreLine');
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
@@ -265,6 +264,7 @@ $scoreLineText = sprintf(
     const hostToken = (window.HOST_TOKEN || '').trim();
     const initialTokenValid = Boolean(window.INITIAL_TOKEN_VALID);
     const initialTokenMessage = (window.INITIAL_TOKEN_MESSAGE || '').toString();
+    const initialScoreLine = <?php echo json_encode($scoreLineText); ?>;
 
     const DEBUG = false;
 
@@ -283,7 +283,6 @@ $scoreLineText = sprintf(
     let stateLoadPromise = null;
     let promotionChoice = 'q';
     let redirectTimer = null;
-    let redirectInterval = null;
     let gameOverState = { over: false, reason: null, winner: null };
 
     function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
@@ -291,6 +290,21 @@ $scoreLineText = sprintf(
       statusMsg.className = tone;
       if (statusSpinner) {
         statusSpinner.classList.toggle('show', showSpinner);
+      }
+    }
+
+    function renderScoreLine(scoreData, fallbackLine = '') {
+      if (!hostScoreLine) return;
+      if (scoreData && typeof scoreData === 'object') {
+        const hostWins = Number.isFinite(Number(scoreData.host_wins)) ? Number(scoreData.host_wins) : 0;
+        const worldWins = Number.isFinite(Number(scoreData.world_wins)) ? Number(scoreData.world_wins) : 0;
+        const draws = Number.isFinite(Number(scoreData.draws)) ? Number(scoreData.draws) : 0;
+        hostScoreLine.textContent = `overall: host ${hostWins} · world ${worldWins} · draws ${draws}`;
+        hostScoreLine.dataset.updatedAt = scoreData.updated_at || '';
+        return;
+      }
+      if (fallbackLine) {
+        hostScoreLine.textContent = fallbackLine;
       }
     }
 
@@ -704,29 +718,17 @@ $scoreLineText = sprintf(
         clearTimeout(redirectTimer);
         redirectTimer = null;
       }
-      if (redirectInterval) {
-        clearInterval(redirectInterval);
-        redirectInterval = null;
-      }
     }
 
-    function startRedirectCountdown(seconds = 5) {
+    function redirectToGamePage() {
       clearRedirectTimers();
-      let remaining = seconds;
-      if (redirectCountdownEl) redirectCountdownEl.textContent = remaining;
-      redirectInterval = setInterval(() => {
-        remaining -= 1;
-        if (remaining <= 0) {
-          clearRedirectTimers();
-          window.location.href = 'index.php';
-          return;
-        }
-        if (redirectCountdownEl) redirectCountdownEl.textContent = remaining;
-      }, 1000);
+      if (returnToGameLink) {
+        returnToGameLink.setAttribute('aria-busy', 'true');
+      }
+      window.location.replace('index.php');
       redirectTimer = setTimeout(() => {
-        clearRedirectTimers();
         window.location.href = 'index.php';
-      }, seconds * 1000);
+      }, 1500);
     }
 
     function enterCompletionState(message) {
@@ -734,9 +736,9 @@ $scoreLineText = sprintf(
       clearSelection();
       hideStateCards();
       showStateCard(completionCard);
-      setStatus(message || 'Move submitted. Redirecting soon…', 'ok');
+      setStatus(message || 'Move submitted. Redirecting…', 'ok');
       if (statusSpinner) statusSpinner.classList.remove('show');
-      startRedirectCountdown(5);
+      redirectToGamePage();
     }
 
     function enterExpiredLinkState(reason) {
@@ -814,6 +816,7 @@ $scoreLineText = sprintf(
 
           fenBox.value = state.fen;
           pgnBox.value = state.pgn;
+          renderScoreLine(state.score, state.score_line);
 
           game.reset();
           let loadedFromPgn = false;
@@ -1073,15 +1076,7 @@ $scoreLineText = sprintf(
     copyFenBtn.addEventListener('click', () => copyText(fenBox.value, copyFenMsg));
     copyPgnBtn.addEventListener('click', () => copyText(pgnBox.value, copyPgnMsg));
 
-    if (cancelRedirectBtn) {
-      cancelRedirectBtn.addEventListener('click', () => {
-        clearRedirectTimers();
-        cancelRedirectBtn.disabled = true;
-        if (redirectNote) {
-          redirectNote.textContent = 'Redirect canceled. Use the button below to return to the game.';
-        }
-      });
-    }
+    renderScoreLine(null, initialScoreLine);
 
     if (initialTokenValid) {
       fetchState().catch(err => {

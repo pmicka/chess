@@ -61,6 +61,8 @@ $chessAppConfig = [
     'currentFen' => $preloadedGame['fen'] ?? null,
     'movesPgn' => $preloadedGame['pgn'] ?? '',
     'initialFen' => 'start',
+    'score' => $scoreTotals,
+    'score_line' => $scoreLineText,
 ];
 
 if (!empty($preloadedGame['visitor_color'])) {
@@ -219,7 +221,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         <span id="copyPgnMsg" class="copy-note" aria-live="polite"></span>
       </div>
       <p class="muted mono" id="debugBox"></p>
-      <p class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
+      <p id="scoreLine" class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
     </div>
     <footer class="app-footer">
       <p class="footer-note">Code: <a href="LICENSE">MIT</a> · Pieces: <a href="assets/pieces/lichess/LICENSE.txt">Lichess CC0</a> · <a href="https://github.com/pmicka/chess/" target="_blank" rel="noopener noreferrer">source</a></p>
@@ -244,6 +246,7 @@ if (!empty($preloadedGame['visitor_color'])) {
     const copyFenMsg = document.getElementById('copyFenMsg');
     const copyPgnMsg = document.getElementById('copyPgnMsg');
     const errorBox = document.getElementById('errorBox');
+    const scoreLineEl = document.getElementById('scoreLine');
     const visitorColorLabel = document.getElementById('visitorColorLabel');
     const hostColorLabel = document.getElementById('hostColorLabel');
     const turnLabel = document.getElementById('turnLabel');
@@ -269,6 +272,15 @@ if (!empty($preloadedGame['visitor_color'])) {
     const uiHelpers = window.ChessUI || {};
     const filesBase = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     let state = null;
+    const stateStore = {
+      current: null,
+      set(next) {
+        this.current = next ? { ...next } : null;
+        state = this.current;
+        return this.current;
+      },
+      get() { return this.current; },
+    };
 
     // visitor plays black in your JSON example; but we read it from state
     let visitorColor = 'black';
@@ -643,6 +655,22 @@ if (!empty($preloadedGame['visitor_color'])) {
       statusSpinner.classList.toggle('show', showSpinner);
     }
 
+    function renderScoreLine(scoreData, fallbackLine = '') {
+      if (!scoreLineEl) return;
+      if (scoreData && typeof scoreData === 'object') {
+        const hostWins = Number.isFinite(Number(scoreData.host_wins)) ? Number(scoreData.host_wins) : 0;
+        const worldWins = Number.isFinite(Number(scoreData.world_wins)) ? Number(scoreData.world_wins) : 0;
+        const draws = Number.isFinite(Number(scoreData.draws)) ? Number(scoreData.draws) : 0;
+        scoreLineEl.textContent = `overall: host ${hostWins} · world ${worldWins} · draws ${draws}`;
+        scoreLineEl.dataset.updatedAt = scoreData.updated_at || '';
+        return;
+      }
+      const fallback = fallbackLine || appConfig.score_line || scoreLineEl.textContent;
+      if (fallback) {
+        scoreLineEl.textContent = fallback;
+      }
+    }
+
     function blockForStateError(message) {
       setStatus(message, 'error');
       btnSubmit.disabled = true;
@@ -913,23 +941,25 @@ if (!empty($preloadedGame['visitor_color'])) {
     }
 
     function applyStateData(newState, { resetSelection = true } = {}) {
-      state = newState;
-      latestFetchedStateFingerprint = stateFingerprint(newState);
-      visitorColor = state.visitor_color;
-      hostColor = state.you_color;
+      const canonicalState = stateStore.set(newState);
+      latestFetchedStateFingerprint = stateFingerprint(canonicalState);
+      visitorColor = canonicalState?.visitor_color;
+      hostColor = canonicalState?.you_color;
       queuedServerState = null;
       selectionIsStale = false;
       clearErrors();
 
+      renderScoreLine(canonicalState?.score, canonicalState?.score_line);
+
       visitorColorLabel.textContent = visitorColor;
       hostColorLabel.textContent = hostColor;
-      turnLabel.textContent = state.turn_color;
+      turnLabel.textContent = canonicalState.turn_color;
 
-      fenBox.value = state.fen;
-      pgnBox.value = state.pgn;
+      fenBox.value = canonicalState.fen;
+      pgnBox.value = canonicalState.pgn;
 
-      const fenFromHistory = syncHistoryFromState(state);
-      const fenToLoad = fenFromHistory || state.fen;
+      const fenFromHistory = syncHistoryFromState(canonicalState);
+      const fenToLoad = fenFromHistory || canonicalState.fen;
 
       try {
         game.load(fenToLoad);
@@ -937,17 +967,17 @@ if (!empty($preloadedGame['visitor_color'])) {
         blockForStateError('Invalid FEN from server. Refresh later.');
         return;
       }
-      lastMoveSquares = deriveLastMoveSquares(state);
+      lastMoveSquares = deriveLastMoveSquares(canonicalState);
 
       const detected = computeGameOverFromFen(fenToLoad);
-      const forcedOver = state.status && state.status !== 'active';
+      const forcedOver = canonicalState.status && canonicalState.status !== 'active';
       applyGameOverUI({
         over: forcedOver || detected.over,
         reason: detected.reason || (forcedOver ? 'finished' : null),
         winner: detected.winner || null,
       });
 
-      debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
+      debugBox.textContent = `game_id=${canonicalState.id} status=${canonicalState.status} updated_at=${canonicalState.updated_at}`;
       renderBoard();
 
       updateStatusMessage();
@@ -1020,6 +1050,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
       fetchState({ resetSelection: true }).catch(handleStateError);
     }
+
+    renderScoreLine(appConfig.score, appConfig.score_line);
 
     // Bootstrap from server-rendered values so the board is not empty before the first fetch.
     const bootstrapFen = syncHistoryFromState({

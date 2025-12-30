@@ -23,3 +23,6 @@ const DB_PATH = __DIR__ . '/data/chess.sqlite';
 
 // From address used when emailing host tokens.
 const MAIL_FROM = 'chess@example.com';
+
+// Admin reset key required by /api/admin_reset.php.
+const ADMIN_RESET_KEY = 'set-a-strong-admin-reset-key';
