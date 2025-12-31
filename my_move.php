@@ -164,33 +164,6 @@ $scoreLineText = sprintf(
             <button id="gameOverRefresh" type="button" class="secondary button-link">Refresh</button>
           </div>
         </div>
-        <div class="move-controls-wrap">
-          <p class="muted selected-move">
-            Selected move: <code id="movePreview">none</code>
-          </p>
-          <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
-            <div class="label">Promote to:</div>
-            <p class="promotion-hint">Choose promotion piece before submitting. Queen is selected by default.</p>
-            <div class="promotion-buttons" role="group" aria-label="Choose promotion piece">
-              <button type="button" class="promo-btn active" data-piece="q">
-                <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wQ.svg" alt=""></span>
-                <span class="promo-label">Queen (default)</span>
-              </button>
-              <button type="button" class="promo-btn" data-piece="r">
-                <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wR.svg" alt=""></span>
-                <span class="promo-label">Rook</span>
-              </button>
-              <button type="button" class="promo-btn" data-piece="b">
-                <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wB.svg" alt=""></span>
-                <span class="promo-label">Bishop</span>
-              </button>
-              <button type="button" class="promo-btn" data-piece="n">
-                <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wN.svg" alt=""></span>
-                <span class="promo-label">Knight</span>
-              </button>
-            </div>
-          </div>
-        </div>
         <div class="controls">
           <button id="btnRefresh">Refresh</button>
           <button id="btnSubmit" disabled>Submit move</button>
@@ -199,6 +172,18 @@ $scoreLineText = sprintf(
           <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
           <span id="statusMsg" class="muted"></span>
           <span id="lastUpdated" class="muted">Last updated: ...</span>
+        </div>
+        <p class="muted selected-move">
+          Selected move: <code id="movePreview">none</code>
+        </p>
+        <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
+          <div class="label">Promote to:</div>
+          <div class="promotion-buttons">
+            <button type="button" class="promo-btn active" data-piece="q">Queen</button>
+            <button type="button" class="promo-btn" data-piece="r">Rook</button>
+            <button type="button" class="promo-btn" data-piece="b">Bishop</button>
+            <button type="button" class="promo-btn" data-piece="n">Knight</button>
+          </div>
         </div>
         <div class="extra-actions">
           <button id="btnCopyLink" type="button">Copy this link</button>
@@ -268,12 +253,6 @@ $scoreLineText = sprintf(
       const errorBanner = document.getElementById('errorBanner');
       const promotionChooser = document.getElementById('promotionChooser');
       const promotionButtons = Array.from(document.querySelectorAll('.promo-btn'));
-      const promotionIconMap = {
-        q: { w: 'assets/pieces/lichess/wQ.svg', b: 'assets/pieces/lichess/bQ.svg' },
-        r: { w: 'assets/pieces/lichess/wR.svg', b: 'assets/pieces/lichess/bR.svg' },
-        b: { w: 'assets/pieces/lichess/wB.svg', b: 'assets/pieces/lichess/bB.svg' },
-        n: { w: 'assets/pieces/lichess/wN.svg', b: 'assets/pieces/lichess/bN.svg' },
-      };
       const gameOverBanner = document.getElementById('gameOverBanner');
       const gameOverTitle = document.getElementById('gameOverTitle');
       const gameOverBody = document.getElementById('gameOverBody');
@@ -443,29 +422,11 @@ $scoreLineText = sprintf(
         updateHighlights();
       }
 
-      function updatePromotionButtons(activePiece) {
-        promotionButtons.forEach((btn) => {
-          const isActive = btn.dataset.piece === activePiece;
-          btn.classList.toggle('active', isActive);
-          btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-        });
-      }
-
-      function setPromotionIconsForColor(color) {
-        const key = String(color).toLowerCase() === 'black' ? 'b' : 'w';
-        promotionButtons.forEach((btn) => {
-          const img = btn.querySelector('.promo-icon img');
-          const pieceKey = btn.dataset.piece;
-          const src = (promotionIconMap[pieceKey] && promotionIconMap[pieceKey][key]) || null;
-          if (img && src) {
-            img.src = src;
-          }
-        });
-      }
-
       function resetPromotionChooser() {
         promotionChoice = 'q';
-        updatePromotionButtons(promotionChoice);
+        promotionButtons.forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+        });
         promotionChooser.classList.remove('show');
       }
 
@@ -604,7 +565,9 @@ $scoreLineText = sprintf(
       function selectPromotionChoice(piece) {
         const nextChoice = (piece || 'q').toLowerCase();
         promotionChoice = nextChoice;
-        updatePromotionButtons(promotionChoice);
+        promotionButtons.forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+        });
         if (promotionChooser && pendingMove && pendingMove.requiresPromotion && pendingBaseFen) {
           try {
             game.load(pendingBaseFen);
@@ -713,7 +676,9 @@ $scoreLineText = sprintf(
         };
         if (promoInfo.isPromotion) {
           promotionChooser.classList.add('show');
-          updatePromotionButtons(pendingMove.promotion);
+          promotionButtons.forEach((btn) => {
+            btn.classList.toggle('active', btn.dataset.piece === pendingMove.promotion);
+          });
           promotionChoice = pendingMove.promotion;
         }
         movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
@@ -963,7 +928,6 @@ $scoreLineText = sprintf(
 
             visitorColor = state.visitor_color;
             youColor = state.you_color;
-            setPromotionIconsForColor(youColor);
 
             visitorColorLabel.textContent = visitorColor;
             hostColorLabel.textContent = youColor;

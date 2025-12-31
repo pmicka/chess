@@ -315,24 +315,16 @@ button.secondary,
   color: var(--text-secondary);
 }
 
-.move-controls-wrap {
-  margin-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .selected-move {
-  margin: 0;
+  margin-top: 8px;
   font-size: 14px;
 }
 
 .promotion-chooser {
   display: none;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-strong);
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
 }
 
 .promotion-chooser.show {
@@ -347,50 +339,24 @@ button.secondary,
   justify-content: flex-start;
 }
 
-.promotion-hint {
-  margin: 2px 0 8px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
 .promotion-buttons {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
 .promotion-buttons .promo-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
   background: var(--button-surface);
   color: var(--text-primary);
   border: 1px solid var(--border-strong);
   padding: 8px 10px;
   border-radius: var(--radius-tight);
-  min-height: 42px;
 }
 
 .promotion-buttons .promo-btn.active {
   background: var(--button-bg);
   color: var(--button-text);
   border-color: var(--text-primary);
-}
-
-.promotion-buttons .promo-btn:focus-visible {
-  outline: 2px solid var(--button-bg);
-  outline-offset: 2px;
-}
-
-.promo-icon img {
-  width: 24px;
-  height: 24px;
-  display: block;
-}
-
-.promo-label {
-  font-size: 14px;
 }
 
 code {
