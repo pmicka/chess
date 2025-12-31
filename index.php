@@ -167,6 +167,33 @@ if (!empty($preloadedGame['visitor_color'])) {
           data-error-callback="onTurnstileError"
         ></div>
       </div>
+      <div class="move-controls-wrap">
+        <p class="muted selected-move">
+          Selected move: <code id="movePreview">none</code>
+        </p>
+        <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
+          <div class="label">Promote to:</div>
+          <p class="promotion-hint">Choose promotion piece before submitting. Queen is selected by default.</p>
+          <div class="promotion-buttons" role="group" aria-label="Choose promotion piece">
+            <button type="button" class="promo-btn active" data-piece="q">
+              <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wQ.svg" alt=""></span>
+              <span class="promo-label">Queen (default)</span>
+            </button>
+            <button type="button" class="promo-btn" data-piece="r">
+              <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wR.svg" alt=""></span>
+              <span class="promo-label">Rook</span>
+            </button>
+            <button type="button" class="promo-btn" data-piece="b">
+              <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wB.svg" alt=""></span>
+              <span class="promo-label">Bishop</span>
+            </button>
+            <button type="button" class="promo-btn" data-piece="n">
+              <span class="promo-icon" aria-hidden="true"><img src="assets/pieces/lichess/wN.svg" alt=""></span>
+              <span class="promo-label">Knight</span>
+            </button>
+          </div>
+        </div>
+      </div>
       <div class="controls">
         <button id="btnRefresh">Refresh</button>
         <button id="btnSubmit" disabled>Submit move</button>
@@ -184,18 +211,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         <p id="historyStatus" class="muted history-status" aria-live="polite"></p>
         <div id="historyNotice" class="banner" role="status" aria-live="polite">
           <span>Reviewing history — click Live to return before submitting a move.</span>
-        </div>
-      </div>
-      <p class="muted selected-move">
-        Selected move: <code id="movePreview">none</code>
-      </p>
-      <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
-        <div class="label">Promote to:</div>
-        <div class="promotion-buttons">
-          <button type="button" class="promo-btn active" data-piece="q">Queen</button>
-          <button type="button" class="promo-btn" data-piece="r">Rook</button>
-          <button type="button" class="promo-btn" data-piece="b">Bishop</button>
-          <button type="button" class="promo-btn" data-piece="n">Knight</button>
         </div>
       </div>
       <div id="updateBanner" class="banner" role="status" aria-live="polite">
@@ -262,6 +277,12 @@ if (!empty($preloadedGame['visitor_color'])) {
       const btnBannerRefresh = document.getElementById('btnBannerRefresh');
       const promotionChooser = document.getElementById('promotionChooser');
       const promotionButtons = Array.from(document.querySelectorAll('.promo-btn'));
+      const promotionIconMap = {
+        q: { w: 'assets/pieces/lichess/wQ.svg', b: 'assets/pieces/lichess/bQ.svg' },
+        r: { w: 'assets/pieces/lichess/wR.svg', b: 'assets/pieces/lichess/bR.svg' },
+        b: { w: 'assets/pieces/lichess/wB.svg', b: 'assets/pieces/lichess/bB.svg' },
+        n: { w: 'assets/pieces/lichess/wN.svg', b: 'assets/pieces/lichess/bN.svg' },
+      };
       const gameOverBanner = document.getElementById('gameOverBanner');
       const gameOverTitle = document.getElementById('gameOverTitle');
       const gameOverBody = document.getElementById('gameOverBody');
@@ -499,9 +520,7 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       function resetPromotionChooser() {
         promotionChoice = 'q';
-        promotionButtons.forEach((btn) => {
-          btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
-        });
+        updatePromotionButtons(promotionChoice);
         promotionChooser.classList.remove('show');
       }
 
@@ -561,6 +580,26 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
+      function updatePromotionButtons(activePiece) {
+        promotionButtons.forEach((btn) => {
+          const isActive = btn.dataset.piece === activePiece;
+          btn.classList.toggle('active', isActive);
+          btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        });
+      }
+
+      function setPromotionIconsForColor(color) {
+        const key = String(color).toLowerCase() === 'black' ? 'b' : 'w';
+        promotionButtons.forEach((btn) => {
+          const img = btn.querySelector('.promo-icon img');
+          const pieceKey = btn.dataset.piece;
+          const src = (promotionIconMap[pieceKey] && promotionIconMap[pieceKey][key]) || null;
+          if (img && src) {
+            img.src = src;
+          }
+        });
+      }
+
       function promotionInfoForMove(from, to) {
         const moves = game.moves({ square: from, verbose: true });
         const matches = moves.filter((m) => m.to === to);
@@ -574,9 +613,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       function selectPromotionChoice(piece) {
         const nextChoice = (piece || 'q').toLowerCase();
         promotionChoice = nextChoice;
-        promotionButtons.forEach((btn) => {
-          btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
-        });
+        updatePromotionButtons(promotionChoice);
         if (promotionChooser && pendingMove && pendingMove.requiresPromotion && pendingBaseFen) {
           try {
             game.load(pendingBaseFen);
@@ -701,9 +738,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         };
         if (promoInfo.isPromotion) {
           promotionChooser.classList.add('show');
-          promotionButtons.forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.piece === pendingMove.promotion);
-          });
+          updatePromotionButtons(pendingMove.promotion);
           promotionChoice = pendingMove.promotion;
         }
         selectionStateFingerprint = stateFingerprint(state);
@@ -1160,6 +1195,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         latestFetchedStateFingerprint = stateFingerprint(canonicalState);
         visitorColor = canonicalState?.visitor_color;
         hostColor = canonicalState?.you_color;
+        setPromotionIconsForColor(visitorColor);
         queuedServerState = null;
         selectionIsStale = false;
         clearErrors();
@@ -1284,6 +1320,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       renderScoreLine(appConfig.score, appConfig.score_line);
+      setPromotionIconsForColor(visitorColor);
       renderBoard();
       updateHistoryUI();
       notationStatus.textContent = 'Notation hidden';
