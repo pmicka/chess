@@ -152,19 +152,15 @@ if (!empty($preloadedGame['visitor_color'])) {
                 <div class="promotion-buttons">
                   <button type="button" class="promo-btn active" data-piece="q" aria-label="Promote to Queen">
                     <img class="promotion-piece" alt="" src="assets/pieces/lichess/wQ.svg">
-                    <span class="promotion-label">Queen</span>
                   </button>
                   <button type="button" class="promo-btn" data-piece="r" aria-label="Promote to Rook">
                     <img class="promotion-piece" alt="" src="assets/pieces/lichess/wR.svg">
-                    <span class="promotion-label">Rook</span>
                   </button>
                   <button type="button" class="promo-btn" data-piece="b" aria-label="Promote to Bishop">
                     <img class="promotion-piece" alt="" src="assets/pieces/lichess/wB.svg">
-                    <span class="promotion-label">Bishop</span>
                   </button>
                   <button type="button" class="promo-btn" data-piece="n" aria-label="Promote to Knight">
                     <img class="promotion-piece" alt="" src="assets/pieces/lichess/wN.svg">
-                    <span class="promotion-label">Knight</span>
                   </button>
                 </div>
               </div>

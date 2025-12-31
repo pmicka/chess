@@ -351,9 +351,9 @@ button.secondary,
 }
 
 .promotion-buttons .promo-btn {
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0);
   color: var(--text-primary);
-  border: 2px solid transparent;
+  border: none;
   padding: 6px 8px;
   border-radius: var(--radius);
   display: flex;
@@ -373,12 +373,6 @@ button.secondary,
   width: 52px;
   height: 52px;
   display: block;
-}
-
-.promotion-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-primary);
 }
 
 code {
