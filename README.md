@@ -47,12 +47,6 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 - Email delivery relies on the host’s PHP `mail()` configuration; no SMTP credentials are stored in-repo.
 - There are no in-repo cron jobs or deploy scripts; panel-level choices (PHP version, document root, mail configuration) are hosting-specific manual steps.
 
-## Search Console Setup
-- **Canonical base:** The site is intended to live at `https://patrickmicka.com/chess/` (or your own `BASE_URL` ending in `/chess/`). `index.php` emits a canonical link using `BASE_URL` when set; make sure your deployment sets `BASE_URL` to the full public URL (including `/chess/`) to avoid split signals between `/` and `/chess/`.
-- **Sitemap:** Static sitemap at `https://patrickmicka.com/chess/sitemap.xml`, referenced from `robots.txt`. If you host under a different domain/path, update both files to the correct absolute URL.
-- **Verification:** To surface a `<meta name="google-site-verification">` on the public page, set `GOOGLE_SITE_VERIFICATION` in `config.local.php` (leave it blank in git). You can also upload the Google-provided HTML verification file to the web root if your host allows static files there.
-- **Keep out of index:** `robots.txt` disallows `/chess/my_move.php`, `/chess/api/`, `/chess/init_db.php`, `/chess/scripts/`, and `/chess/data/`; `my_move.php` also sends `noindex`. Leave admin/API paths out of any sitemap entries.
-
 ## Operational notes
 - **Health check:** `GET /api/health.php` verifies DB path existence/writability and whether `TURNSTILE_SECRET_KEY` is loaded.
 - **Admin reset:** `POST /api/admin_reset.php` with `X-Admin-Key: <ADMIN_RESET_KEY>` resets the active game to the starting position, deletes outstanding tokens/locks, and returns a fresh `host_token`.

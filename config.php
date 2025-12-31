@@ -29,11 +29,6 @@ $applyPlaceholderConfig = function (): void {
         define('TURNSTILE_SECRET_KEY', '');
     }
 
-    // Optional: Google Search Console verification token for the meta tag.
-    if (!defined('GOOGLE_SITE_VERIFICATION')) {
-        define('GOOGLE_SITE_VERIFICATION', '');
-    }
-
     // Path to the SQLite database file (kept in writable data/).
     if (!defined('DB_PATH')) {
         define('DB_PATH', __DIR__ . '/data/chess.sqlite');
