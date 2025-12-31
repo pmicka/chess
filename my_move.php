@@ -152,6 +152,28 @@ $scoreLineText = sprintf(
         <div class="board-container">
           <div class="board-shell">
             <div id="board" aria-label="Chess board" role="application"></div>
+            <div id="promotionChooser" class="promotion-chooser" aria-live="polite" aria-label="Choose promotion piece">
+              <div class="promotion-band" role="group" aria-label="Promotion options">
+                <div class="promotion-buttons">
+                  <button type="button" class="promo-btn active" data-piece="q" aria-label="Promote to Queen">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wQ.svg">
+                    <span class="promotion-label">Queen</span>
+                  </button>
+                  <button type="button" class="promo-btn" data-piece="r" aria-label="Promote to Rook">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wR.svg">
+                    <span class="promotion-label">Rook</span>
+                  </button>
+                  <button type="button" class="promo-btn" data-piece="b" aria-label="Promote to Bishop">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wB.svg">
+                    <span class="promotion-label">Bishop</span>
+                  </button>
+                  <button type="button" class="promo-btn" data-piece="n" aria-label="Promote to Knight">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wN.svg">
+                    <span class="promotion-label">Knight</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
@@ -176,15 +198,6 @@ $scoreLineText = sprintf(
         <p class="muted selected-move">
           Selected move: <code id="movePreview">none</code>
         </p>
-        <div id="promotionChooser" class="promotion-chooser" aria-live="polite">
-          <div class="label">Promote to:</div>
-          <div class="promotion-buttons">
-            <button type="button" class="promo-btn active" data-piece="q">Queen</button>
-            <button type="button" class="promo-btn" data-piece="r">Rook</button>
-            <button type="button" class="promo-btn" data-piece="b">Bishop</button>
-            <button type="button" class="promo-btn" data-piece="n">Knight</button>
-          </div>
-        </div>
         <div class="extra-actions">
           <button id="btnCopyLink" type="button">Copy this link</button>
           <button id="btnResend" type="button">Resend link to my email</button>
@@ -285,6 +298,8 @@ $scoreLineText = sprintf(
       let lastUpdatedTs = null;
       let stateLoadPromise = null;
       let promotionChoice = 'q';
+      let promotionPending = false;
+      let promotionColor = null;
       let redirectTimer = null;
       let gameOverState = { over: false, reason: null, winner: null };
       let notationVisible = false;
@@ -424,10 +439,12 @@ $scoreLineText = sprintf(
 
       function resetPromotionChooser() {
         promotionChoice = 'q';
-        promotionButtons.forEach((btn) => {
-          btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
-        });
-        promotionChooser.classList.remove('show');
+        promotionPending = false;
+        promotionColor = null;
+        updatePromotionButtons();
+        if (promotionChooser) {
+          promotionChooser.classList.remove('show');
+        }
       }
 
       function clearSelection({ restore = false } = {}) {
@@ -562,12 +579,28 @@ $scoreLineText = sprintf(
         };
       }
 
+      function updatePromotionButtons() {
+        const colorPrefix = promotionColor === 'b' ? 'b' : 'w';
+        promotionButtons.forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+          const img = btn.querySelector('img');
+          if (img) {
+            const pieceCode = (btn.dataset.piece || 'q').toUpperCase();
+            img.src = `assets/pieces/lichess/${colorPrefix}${pieceCode}.svg`;
+          }
+        });
+        if (promotionChooser) {
+          promotionChooser.setAttribute('aria-hidden', promotionPending ? 'false' : 'true');
+        }
+      }
+
       function selectPromotionChoice(piece) {
         const nextChoice = (piece || 'q').toLowerCase();
         promotionChoice = nextChoice;
-        promotionButtons.forEach((btn) => {
-          btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
-        });
+        if (pendingMove && pendingMove.requiresPromotion) {
+          promotionPending = true;
+        }
+        updatePromotionButtons();
         if (promotionChooser && pendingMove && pendingMove.requiresPromotion && pendingBaseFen) {
           try {
             game.load(pendingBaseFen);
@@ -643,6 +676,8 @@ $scoreLineText = sprintf(
         const promoOptions = promoInfo.moves.map((m) => m.promotion).filter(Boolean);
         let promoToUse = promotionChoice;
         if (promoInfo.isPromotion) {
+          promotionPending = true;
+          promotionColor = yourTurnChar;
           if (!promoOptions.includes(promoToUse)) {
             promoToUse = promoOptions[0] || 'q';
           }
@@ -664,6 +699,7 @@ $scoreLineText = sprintf(
             try { game.load(pendingBaseFen); } catch (err) { /* ignore */ }
           }
           pendingBaseFen = null;
+          resetPromotionChooser();
           return;
         }
 
@@ -675,11 +711,14 @@ $scoreLineText = sprintf(
           requiresPromotion: promoInfo.isPromotion,
         };
         if (promoInfo.isPromotion) {
-          promotionChooser.classList.add('show');
-          promotionButtons.forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.piece === pendingMove.promotion);
-          });
           promotionChoice = pendingMove.promotion;
+          updatePromotionButtons();
+          if (promotionChooser) {
+            promotionChooser.classList.add('show');
+          }
+        } else {
+          promotionPending = false;
+          promotionColor = null;
         }
         movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
         btnSubmit.disabled = false;
