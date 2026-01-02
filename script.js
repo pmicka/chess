@@ -1,9 +1,9 @@
 (() => {
-  const rail = document.querySelector('.rail');
-  const trigger = document.getElementById('sticky-trigger');
+  const railEl = document.querySelector('.rail');
+  const triggerEl = document.getElementById('sticky-trigger');
   const desktopQuery = window.matchMedia('(min-width: 960px)');
 
-  if (!rail || !trigger) return;
+  if (!railEl || !triggerEl) return;
 
   let isSticky = false;
   let rafId = null;
@@ -12,26 +12,26 @@
   const setSticky = (next) => {
     if (next === isSticky) return;
     isSticky = next;
-    rail.classList.toggle('rail--sticky', next);
+    railEl.classList.toggle('rail--sticky', next);
   };
 
   const evaluate = () => {
-    const top = trigger.getBoundingClientRect().top;
-    if (isSticky) {
-      if (top >= -40) {
-        setSticky(false);
-      }
-    } else if (top <= -120) {
+    rafId = null;
+    const t = Math.round(triggerEl.getBoundingClientRect().top);
+
+    if (!isSticky && t <= -140) {
       setSticky(true);
+      return;
+    }
+
+    if (isSticky && t >= -20) {
+      setSticky(false);
     }
   };
 
   const onScroll = () => {
-    if (rafId) return;
-    rafId = window.requestAnimationFrame(() => {
-      rafId = null;
-      evaluate();
-    });
+    if (rafId !== null) return;
+    rafId = window.requestAnimationFrame(evaluate);
   };
 
   const enable = () => {
@@ -39,7 +39,6 @@
     enabled = true;
     setSticky(false);
     window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onScroll, { passive: true });
     evaluate();
   };
 
@@ -47,12 +46,15 @@
     if (!enabled) return;
     enabled = false;
     window.removeEventListener('scroll', onScroll);
-    window.removeEventListener('resize', onScroll);
+    if (rafId !== null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
+    }
     setSticky(false);
   };
 
-  const handleMediaChange = (e) => {
-    if (e.matches) {
+  const handleMediaChange = (event) => {
+    if (event.matches) {
       enable();
     } else {
       disable();
