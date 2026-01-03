@@ -518,6 +518,19 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
+      function isPromotionFlowActive() {
+        const chooserVisible = promotionChooser?.classList.contains('show');
+        return chooserVisible || promotionPending || (pendingMove && pendingMove.requiresPromotion);
+      }
+
+      function cancelPromotionFlow({ restore = false } = {}) {
+        if (!isPromotionFlowActive()) return false;
+        clearSelection({ restore });
+        resetPromotionChooser();
+        btnSubmit.disabled = true;
+        return true;
+      }
+
       function clearSelection({ restore = false } = {}) {
         const hadPending = Boolean(pendingBaseFen);
         if (restore && pendingBaseFen) {
@@ -1258,6 +1271,10 @@ if (!empty($preloadedGame['visitor_color'])) {
         const currentFingerprint = stateFingerprint(state);
         const hasChanged = !currentFingerprint || currentFingerprint !== latestFetchedStateFingerprint;
 
+        if (hasChanged) {
+          cancelPromotionFlow();
+        }
+
         if (pendingMove && hasChanged && allowQueue) {
           queuedServerState = newState;
           selectionIsStale = true;
@@ -1302,6 +1319,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function applyQueuedStateOrFetch() {
+        cancelPromotionFlow();
         if (queuedServerState) {
           applyStateData(queuedServerState, { resetSelection: true });
           return;
