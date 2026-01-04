@@ -100,6 +100,11 @@ $scoreLineText = sprintf(
     $scoreTotals['draws'] ?? 0
 );
 
+$canonicalUrl = 'https://patrickmicka.com/chess/';
+$pageTitle = 'The Internet Gambit | Host Move';
+$pageDescription = 'Me vs. the world, one board at a time.';
+$socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
+
 ?>
 <!doctype html>
 <html lang="en">
@@ -107,11 +112,25 @@ $scoreLineText = sprintf(
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
+  <link rel="canonical" href="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="The Internet Gambit" />
+  <meta property="og:description" content="Me vs. the world, one board at a time." />
+  <meta property="og:url" content="https://patrickmicka.com/chess/" />
+  <meta property="og:image" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:image:secure_url" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="The Internet Gambit — Me vs. the world, one board at a time." />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="The Internet Gambit" />
+  <meta name="twitter:description" content="Me vs. the world, one board at a time." />
+  <meta name="twitter:image" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
   <link rel="stylesheet" href="assets/css/style.css">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons//apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons//favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/icons//favicon-16x16.png">
-  <title>Host Move - Me vs the World Chess</title>
+  <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
 </head>
 <body>
   <div class="wrap">

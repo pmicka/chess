@@ -53,10 +53,11 @@ $scoreLineText = sprintf(
 );
 
 $baseUrl = defined('BASE_URL') ? trim((string)BASE_URL) : '';
-$canonicalUrl = rtrim($baseUrl !== '' ? $baseUrl : 'https://patrickmicka.com/chess/', '/') . '/';
+$canonicalUrl = 'https://patrickmicka.com/chess/';
 $googleVerification = defined('GOOGLE_SITE_VERIFICATION') ? trim((string)GOOGLE_SITE_VERIFICATION) : '';
-$pageTitle = 'Me vs the World — Asynchronous Chess Experiment';
-$pageDescription = 'Visitors play collectively against a single host in an ongoing chess game. Built in public with PHP, SQLite, and chess.js.';
+$pageTitle = 'The Internet Gambit | patrickmicka.com';
+$pageDescription = 'Me vs. the world, one board at a time.';
+$socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
 
 $chessAppConfig = [
     'score' => $scoreTotals,
@@ -78,15 +79,19 @@ if (!empty($preloadedGame['visitor_color'])) {
   <?php if ($googleVerification !== ''): ?>
     <meta name="google-site-verification" content="<?= htmlspecialchars($googleVerification, ENT_QUOTES, 'UTF-8') ?>" />
   <?php endif; ?>
-  <meta property="og:title" content="<?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>" />
-  <meta property="og:description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
   <meta property="og:type" content="website" />
-  <meta property="og:url" content="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>" />
-  <meta property="og:image" content="<?= htmlspecialchars($canonicalUrl . 'assets/icons/android-chrome-512x512.png', ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:title" content="The Internet Gambit" />
+  <meta property="og:description" content="Me vs. the world, one board at a time." />
+  <meta property="og:url" content="https://patrickmicka.com/chess/" />
+  <meta property="og:image" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:image:secure_url" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="The Internet Gambit — Me vs. the world, one board at a time." />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="<?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?>" />
-  <meta name="twitter:description" content="<?= htmlspecialchars($pageDescription, ENT_QUOTES, 'UTF-8') ?>" />
-  <meta name="twitter:image" content="<?= htmlspecialchars($canonicalUrl . 'assets/icons/android-chrome-512x512.png', ENT_QUOTES, 'UTF-8') ?>" />
+  <meta name="twitter:title" content="The Internet Gambit" />
+  <meta name="twitter:description" content="Me vs. the world, one board at a time." />
+  <meta name="twitter:image" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
   <meta name="theme-color" content="#0b0b0b" />
   <link rel="manifest" href="/chess/manifest.webmanifest">
   <script type="application/ld+json">
