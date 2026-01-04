@@ -9,4 +9,4 @@ Disallow: /chess/init_db.php
 Disallow: /chess/scripts/
 Disallow: /chess/data/
 
-Sitemap: https://patrickmicka.com/chess/sitemap.xml
+Sitemap: https://patrickmicka.com/sitemap.xml
