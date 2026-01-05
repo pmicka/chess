@@ -47,6 +47,9 @@ $applyPlaceholderConfig = function (): void {
     // Admin reset key used for POST /api/admin_reset.php
     if (!defined('ADMIN_RESET_KEY')) {
         $envKey = getenv('ADMIN_RESET_KEY');
+        if (!defined('ADMIN_RESET_KEY_SOURCE')) {
+            define('ADMIN_RESET_KEY_SOURCE', $envKey !== false && $envKey !== '' ? 'env' : 'default');
+        }
         define('ADMIN_RESET_KEY', $envKey !== false ? $envKey : '');
     }
 };
@@ -54,6 +57,15 @@ $applyPlaceholderConfig = function (): void {
 $localConfig = __DIR__ . '/config.local.php';
 if (file_exists($localConfig)) {
     require $localConfig;
+}
+
+if (!defined('ADMIN_RESET_KEY_SOURCE')) {
+    if (defined('ADMIN_RESET_KEY') && ADMIN_RESET_KEY !== '') {
+        define('ADMIN_RESET_KEY_SOURCE', 'config_local');
+    } else {
+        $envKey = getenv('ADMIN_RESET_KEY');
+        define('ADMIN_RESET_KEY_SOURCE', $envKey !== false && $envKey !== '' ? 'env' : 'default');
+    }
 }
 
 $applyPlaceholderConfig();

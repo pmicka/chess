@@ -29,9 +29,12 @@ try {
     respond_json(503, ['error' => $e->getMessage(), 'code' => 'config']);
 }
 
-$adminResetKey = load_admin_reset_key();
+$adminResetKey = trim(load_admin_reset_key());
+$adminResetKeySource = defined('ADMIN_RESET_KEY_SOURCE') ? ADMIN_RESET_KEY_SOURCE : 'default';
 if ($adminResetKey === '') {
-    log_event('admin_reset_blocked', ['reason' => 'missing_key', 'ip' => client_ip()]);
+    $logParts = ['reason' => 'missing_key', 'ip' => client_ip(), 'key_source' => $adminResetKeySource];
+    log_event('admin_reset_blocked', $logParts);
+    error_log(sprintf('admin_reset missing ADMIN_RESET_KEY source=%s request_id=%s', $adminResetKeySource, $requestId));
     respond_json(503, ['error' => 'Server misconfigured: ADMIN_RESET_KEY not set. Define ADMIN_RESET_KEY in config.php/config.local.php or set the ADMIN_RESET_KEY environment variable.', 'code' => 'admin_key_missing']);
 }
 
@@ -61,7 +64,7 @@ if ($headerKey === '' && isset($_SERVER['HTTP_X_ADMIN_KEY'])) {
 }
 
 if ($headerKey !== '') {
-    $providedKey = $headerKey;
+    $providedKey = trim((string)$headerKey);
     $usedKeySource = 'header';
 } else {
     $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
@@ -80,7 +83,7 @@ if ($headerKey !== '') {
     }
 
     if ($bodyKey !== '') {
-        $providedKey = $bodyKey;
+        $providedKey = trim((string)$bodyKey);
         $usedKeySource = 'body';
     }
 }
@@ -91,7 +94,13 @@ if ($providedKey === '' || $usedKeySource === null) {
 }
 
 if (!hash_equals($adminResetKey, $providedKey)) {
-    log_event('admin_reset_blocked', ['reason' => 'invalid_key', 'ip' => client_ip()]);
+    log_event('admin_reset_blocked', ['reason' => 'invalid_key', 'ip' => client_ip(), 'key_source' => $usedKeySource, 'config_source' => $adminResetKeySource]);
+    error_log(sprintf(
+        'admin_reset key_mismatch source=%s provided_source=%s request_id=%s',
+        $adminResetKeySource,
+        $usedKeySource ?? 'unknown',
+        $requestId
+    ));
     respond_json(403, ['error' => 'Admin key invalid. Reference the request ID when reporting this error.', 'code' => 'forbidden']);
 }
 
