@@ -45,10 +45,10 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image: url("../bg.jpg");
+  background-image: url("/chess/assets/BG.jpg");
   background-image: image-set(
-    url("../bg.webp") type("image/webp"),
-    url("../bg.jpg") type("image/jpeg")
+    url("/chess/assets/BG.webp") type("image/webp"),
+    url("/chess/assets/BG.jpg") type("image/jpeg")
   );
   background-size: cover;
   background-position: left center;
