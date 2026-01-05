@@ -409,6 +409,23 @@ if (!empty($preloadedGame['visitor_color'])) {
       let ecoLoadPrimed = false;
       let openingLookupToken = 0;
       let detailsOpen = false;
+      function hydrateEcoEntries(rawEntries) {
+        if (!Array.isArray(rawEntries)) return [];
+        return rawEntries.map((entry, idx) => {
+          const movesArray = typeof entry?.moves === 'string'
+            ? entry.moves.split(/\s+/).filter(Boolean)
+            : (Array.isArray(entry?.movesArray) ? entry.movesArray : []);
+          return {
+            eco: entry.eco,
+            name: entry.name,
+            moves: entry.moves,
+            movesArray,
+            movesLen: movesArray.length,
+            order: idx,
+          };
+        });
+      }
+
       const ecoLiteStore = {
         started: false,
         data: null,
@@ -420,7 +437,7 @@ if (!empty($preloadedGame['visitor_color'])) {
             if (!raw) return null;
             const parsed = JSON.parse(raw);
             if (!parsed || !Array.isArray(parsed.data)) return null;
-            return parsed.data;
+            return hydrateEcoEntries(parsed.data);
           } catch (err) {
             return null;
           }
@@ -436,7 +453,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         load() {
           if (this.promise) return this.promise;
           const cached = this.loadFromStorage();
-          if (cached) {
+          if (cached && Array.isArray(cached)) {
             this.data = cached;
             this.promise = Promise.resolve(this.data);
             this.started = true;
@@ -449,9 +466,10 @@ if (!empty($preloadedGame['visitor_color'])) {
               return res.json();
             })
             .then((json) => {
-              this.data = Array.isArray(json) ? json : [];
-              this.persist(this.data);
-              return this.data;
+              const hydrated = hydrateEcoEntries(json);
+              this.data = hydrated;
+              this.persist(json);
+              return hydrated;
             })
             .catch((err) => {
               console.error('ECO lite load failed', err);
@@ -1235,6 +1253,27 @@ if (!empty($preloadedGame['visitor_color'])) {
         return verboseHistory.map((m) => `${m.from}${m.to}${m.promotion || ''}`).join(' ').trim();
       }
 
+      function buildMoveTokensFromHistory(verboseHistory) {
+        if (!Array.isArray(verboseHistory) || !verboseHistory.length) return [];
+        return verboseHistory.map((m) => `${m.from}${m.to}`);
+      }
+
+      const GENERIC_OPENING_NAMES = new Set([
+        "king's pawn game",
+        'center game',
+        'italian game',
+        'scotch game',
+      ]);
+
+      const GENERIC_OPENING_PATTERNS = [/\bopening$/i];
+
+      function isGenericUmbrellaName(name) {
+        if (!name) return false;
+        const normalized = name.trim().toLowerCase();
+        if (GENERIC_OPENING_NAMES.has(normalized)) return true;
+        return GENERIC_OPENING_PATTERNS.some((re) => re.test(normalized));
+      }
+
       const PLY_NUMBERED_PATTERN = /\b\d+\.\.\./;
 
       function isPlyNumberedPgn(text) {
@@ -1373,24 +1412,65 @@ if (!empty($preloadedGame['visitor_color'])) {
       async function getOpeningInfo(chessInstance) {
         if (!chessInstance) return null;
         const historyVerbose = chessInstance.history({ verbose: true }) || [];
-        if (!historyVerbose.length) return null;
-        const seq = movesToUciString(historyVerbose);
-        if (!seq) return null;
+        const gameMoveTokens = buildMoveTokensFromHistory(historyVerbose);
+        if (!gameMoveTokens.length) return null;
         const data = await ecoLiteStore.getData();
         if (!data || !data.length) return null;
-        const current = seq.trim();
-        let best = null;
+        const matches = [];
+        let hasFourPlyOrLonger = false;
+
         for (const entry of data) {
-          const moves = (entry?.moves || '').trim();
-          if (!moves) continue;
-          if (current === moves || current.startsWith(`${moves} `)) {
-            const plies = moves.split(/\\s+/).length;
-            if (!best || plies > best.matchedPlies) {
-              best = { eco: entry.eco, name: entry.name, matchedPlies: plies };
+          const movesArray = entry?.movesArray || [];
+          const movesLen = entry?.movesLen || movesArray.length || 0;
+          if (!movesLen || movesLen > gameMoveTokens.length) continue;
+          const isShortLine = movesLen <= 2;
+          let isPrefix = true;
+          for (let i = 0; i < movesLen; i += 1) {
+            if (movesArray[i] !== gameMoveTokens[i]) {
+              isPrefix = false;
+              break;
             }
           }
+          if (!isPrefix) continue;
+          if (movesLen >= 4) {
+            hasFourPlyOrLonger = true;
+          }
+          // Short prefixes are ambiguous across many ECO lines, so mark them generic.
+          matches.push({
+            eco: entry.eco,
+            name: entry.name,
+            movesLen,
+            isGeneric: isShortLine ? true : isGenericUmbrellaName(entry.name),
+            order: entry.order ?? 0,
+          });
         }
-        return best;
+
+        // Avoid returning umbrella 2-ply entries when a longer line matches.
+        const filteredMatches = hasFourPlyOrLonger
+          ? matches.filter((m) => m.movesLen > 2)
+          : matches;
+
+        if (!filteredMatches.length) return null;
+
+        // Longest-prefix wins because eco_lite.json includes many ambiguous 2-ply umbrella lines.
+        filteredMatches.sort((a, b) => {
+          if (a.movesLen !== b.movesLen) return b.movesLen - a.movesLen;
+          if (a.isGeneric !== b.isGeneric) return a.isGeneric ? 1 : -1;
+          if (a.eco !== b.eco) return a.eco.localeCompare(b.eco);
+          if (a.name !== b.name) return a.name.localeCompare(b.name);
+          return (a.order || 0) - (b.order || 0);
+        });
+
+        const best = filteredMatches[0];
+        if (DEBUG) {
+          console.debug('Opening match', {
+            sample: gameMoveTokens.slice(0, 10),
+            eco: best?.eco,
+            name: best?.name,
+            plies: best?.movesLen,
+          });
+        }
+        return best ? { eco: best.eco, name: best.name, matchedPlies: best.movesLen } : null;
       }
 
       function formatMoveCount(plies) {
