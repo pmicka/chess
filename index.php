@@ -126,7 +126,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       Turn: <strong id="turnLabel">…</strong>.
     </p>
 
-    <div class="card project-intro">
+    <div class="card project-intro glass-card">
       <details class="project-details">
         <summary>What is this?</summary>
         <section aria-labelledby="projectIntroHeading">
@@ -148,7 +148,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       </details>
     </div>
 
-      <div class="card">
+      <div class="card stage-card">
         <div class="board-container">
           <div class="board-shell">
             <div id="board" aria-label="Chess board" role="application"></div>
