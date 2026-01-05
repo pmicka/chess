@@ -186,9 +186,6 @@ if (!empty($preloadedGame['visitor_color'])) {
                 <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
                 <span id="statusMsg" class="muted"></span>
               </div>
-              <div class="status-meta">
-                <span class="pill muted" id="turnPill" aria-live="polite">Turn: <strong id="turnLabel">…</strong></span>
-              </div>
             </div>
             <div class="action-stack">
               <div class="primary-buttons">
@@ -248,11 +245,17 @@ if (!empty($preloadedGame['visitor_color'])) {
                   <span class="snapshot-value" id="snapshotStatus">—</span>
                 </div>
               </div>
-              <div class="notation-controls">
-                <button id="toggleNotation" type="button">Show notation</button>
-                <span id="notationStatus" class="muted" aria-live="polite"></span>
+              <div class="details-divider" aria-hidden="true"></div>
+              <div class="details-advanced">
+                <div class="details-advanced-header">
+                  <p class="muted details-advanced-title">Advanced</p>
+                  <div class="notation-controls">
+                    <button id="toggleNotation" class="secondary ghost-button button-compact" type="button">Show notation</button>
+                    <span id="notationStatus" class="muted" aria-live="polite"></span>
+                  </div>
+                </div>
+                <div id="notationMount" class="notation-mount"></div>
               </div>
-              <div id="notationMount"></div>
             </div>
           </div>
         </div>
@@ -335,8 +338,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       const scoreLastResult = document.getElementById('scoreLastResult');
       const visitorColorLabel = document.getElementById('visitorColorLabel');
       const hostColorLabel = document.getElementById('hostColorLabel');
-      const turnLabel = document.getElementById('turnLabel');
-      const turnPill = document.getElementById('turnPill');
       const turnstileWidget = document.querySelector('.cf-turnstile');
       const updateBanner = document.getElementById('updateBanner');
       const updateBannerText = updateBanner ? updateBanner.querySelector('span') : null;
@@ -1426,8 +1427,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       function setNotationData({ fen = '', pgn = '' }) {
         notationData = { fen: fen || '', pgn: pgn || '' };
         if (notationVisible && notationElements) {
-          notationElements.fenBox.value = notationData.fen;
-          notationElements.pgnBox.value = notationData.pgn;
+          notationElements.fenBox.textContent = notationData.fen;
+          notationElements.pgnBox.textContent = notationData.pgn;
           notationElements.copyFenMsg.textContent = '';
           notationElements.copyPgnMsg.textContent = '';
         }
@@ -1436,44 +1437,63 @@ if (!empty($preloadedGame['visitor_color'])) {
       function showNotation() {
         if (!notationMount || notationVisible) return;
         const wrapper = document.createElement('div');
+        wrapper.className = 'notation-grid';
+        const fenBlock = document.createElement('div');
+        fenBlock.className = 'notation-block';
+        const fenHeader = document.createElement('div');
+        fenHeader.className = 'notation-header';
         const fenLabel = document.createElement('p');
-        fenLabel.className = 'muted';
-        fenLabel.textContent = 'FEN:';
-        const fenBox = document.createElement('textarea');
-        fenBox.readOnly = true;
-        const copyFenRow = document.createElement('div');
-        copyFenRow.className = 'copy-row';
+        fenLabel.className = 'notation-label muted';
+        fenLabel.textContent = 'FEN';
+        const fenActions = document.createElement('div');
+        fenActions.className = 'notation-actions';
         const copyFenBtn = document.createElement('button');
         copyFenBtn.type = 'button';
+        copyFenBtn.className = 'secondary ghost-button button-compact';
         copyFenBtn.textContent = 'Copy FEN';
         const copyFenMsg = document.createElement('span');
         copyFenMsg.className = 'copy-note';
         copyFenMsg.setAttribute('aria-live', 'polite');
-        copyFenRow.appendChild(copyFenBtn);
-        copyFenRow.appendChild(copyFenMsg);
+        fenActions.appendChild(copyFenBtn);
+        fenActions.appendChild(copyFenMsg);
+        fenHeader.appendChild(fenLabel);
+        fenHeader.appendChild(fenActions);
+        const fenBox = document.createElement('pre');
+        fenBox.className = 'notation-readout';
+        fenBox.setAttribute('tabindex', '0');
+        fenBox.setAttribute('aria-label', 'Current FEN');
+        fenBlock.appendChild(fenHeader);
+        fenBlock.appendChild(fenBox);
 
+        const pgnBlock = document.createElement('div');
+        pgnBlock.className = 'notation-block';
+        const pgnHeader = document.createElement('div');
+        pgnHeader.className = 'notation-header';
         const pgnLabel = document.createElement('p');
-        pgnLabel.className = 'muted';
-        pgnLabel.textContent = 'PGN:';
-        const pgnBox = document.createElement('textarea');
-        pgnBox.readOnly = true;
-        const copyPgnRow = document.createElement('div');
-        copyPgnRow.className = 'copy-row';
+        pgnLabel.className = 'notation-label muted';
+        pgnLabel.textContent = 'PGN';
+        const pgnActions = document.createElement('div');
+        pgnActions.className = 'notation-actions';
         const copyPgnBtn = document.createElement('button');
         copyPgnBtn.type = 'button';
+        copyPgnBtn.className = 'secondary ghost-button button-compact';
         copyPgnBtn.textContent = 'Copy PGN';
         const copyPgnMsg = document.createElement('span');
         copyPgnMsg.className = 'copy-note';
         copyPgnMsg.setAttribute('aria-live', 'polite');
-        copyPgnRow.appendChild(copyPgnBtn);
-        copyPgnRow.appendChild(copyPgnMsg);
+        pgnActions.appendChild(copyPgnBtn);
+        pgnActions.appendChild(copyPgnMsg);
+        pgnHeader.appendChild(pgnLabel);
+        pgnHeader.appendChild(pgnActions);
+        const pgnBox = document.createElement('pre');
+        pgnBox.className = 'notation-readout';
+        pgnBox.setAttribute('tabindex', '0');
+        pgnBox.setAttribute('aria-label', 'Current PGN');
+        pgnBlock.appendChild(pgnHeader);
+        pgnBlock.appendChild(pgnBox);
 
-        wrapper.appendChild(fenLabel);
-        wrapper.appendChild(fenBox);
-        wrapper.appendChild(copyFenRow);
-        wrapper.appendChild(pgnLabel);
-        wrapper.appendChild(pgnBox);
-        wrapper.appendChild(copyPgnRow);
+        wrapper.appendChild(fenBlock);
+        wrapper.appendChild(pgnBlock);
         notationMount.appendChild(wrapper);
 
         notationElements = { fenBox, pgnBox, copyFenBtn, copyPgnBtn, copyFenMsg, copyPgnMsg };
@@ -1508,8 +1528,8 @@ if (!empty($preloadedGame['visitor_color'])) {
           }
         };
 
-        copyFenBtn.addEventListener('click', () => copyText(fenBox.value, copyFenMsg));
-        copyPgnBtn.addEventListener('click', () => copyText(pgnBox.value, copyPgnMsg));
+        copyFenBtn.addEventListener('click', () => copyText(fenBox.textContent, copyFenMsg));
+        copyPgnBtn.addEventListener('click', () => copyText(pgnBox.textContent, copyPgnMsg));
         setNotationData(notationData);
       }
 
@@ -1541,12 +1561,6 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = hostColor;
-        const normalizedTurn = normalizeColor(canonicalState.turn_color);
-        const prettyTurn = normalizedTurn ? `${normalizedTurn.charAt(0).toUpperCase()}${normalizedTurn.slice(1)}` : '';
-        turnLabel.textContent = prettyTurn || normalizedTurn;
-        if (turnPill) {
-          turnPill.setAttribute('data-turn', normalizedTurn);
-        }
 
         setNotationData({ fen: canonicalState.fen, pgn: canonicalState.pgn });
 
