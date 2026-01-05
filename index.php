@@ -121,9 +121,10 @@ if (!empty($preloadedGame['visitor_color'])) {
 <body>
   <div class="wrap">
     <h1>Me vs the World Chess</h1>
-    <p class="subhead">
-      Visitors play <strong id="visitorColorLabel">black</strong>. Host plays <strong id="hostColorLabel">white</strong>.
-      Turn: <strong id="turnLabel">…</strong>.
+    <p class="subhead meta-line">
+      <span>Visitors play <strong id="visitorColorLabel">black</strong></span>
+      <span>Host plays <strong id="hostColorLabel">white</strong></span>
+      <span>Turn: <strong id="turnLabel">…</strong></span>
       <a class="about-link" href="#about">About</a>
     </p>
 
@@ -210,19 +211,12 @@ if (!empty($preloadedGame['visitor_color'])) {
     </div>
     <section id="about" class="about-section" aria-labelledby="about-heading">
       <h2 id="about-heading">About this project</h2>
-      <svg class="sigil-mark" viewBox="0 0 64 48" role="img" aria-hidden="true" focusable="false">
-        <rect x="4" y="10" width="16" height="28" fill="none" stroke="currentColor" stroke-width="2" />
-        <rect x="24" y="6" width="16" height="36" fill="none" stroke="currentColor" stroke-width="2" />
-        <rect x="44" y="14" width="16" height="20" fill="currentColor" opacity="0.3" />
-        <path d="M8 38h48" stroke="currentColor" stroke-width="2" />
-      </svg>
-      <p>This is a small experiment in building things by doing them.</p>
+      <p class="about-lede">This is a small experiment in building things by doing them.</p>
       <p>At its core, it’s an asynchronous chess simul: one board, one game, me versus anyone who wanders in. Moves unfold slowly over time—no matchmaking, no ratings, no timers—just a shared game and a bit of patience. Sides alternate from game to game, so sometimes you’ll play White and sometimes Black.</p>
       <p>Under the hood, it’s also a learning playground. This project exists to explore how modern tools fit together in the real world: PHP and SQLite on the backend, open-source chess libraries for rules and validation, GitHub for version control, and a growing amount of help from ChatGPT along the way. Wherever possible, it leans on permissive, open licenses—Creative Commons and MIT—because learning works best when ideas can be shared, borrowed, and improved.</p>
       <p>It’s intentionally simple, occasionally imperfect, and very much a work in progress. Things may break. Features may change. That’s part of the point.</p>
       <p>In the end, though, it’s still just a chessboard on the internet.</p>
-      <p>One player on one side.</p>
-      <p>The rest of the world on the other.</p>
+      <p class="about-stanza"><em>One player on one side.<br>The rest of the world on the other.</em></p>
     </section>
     <footer class="app-footer">
       <p class="footer-note">Code: <a href="LICENSE">MIT</a> · Pieces: <a href="assets/pieces/lichess/LICENSE.txt">Lichess CC0</a> · <a href="https://github.com/pmicka/chess/" target="_blank" rel="noopener noreferrer">source</a></p>
