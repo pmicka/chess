@@ -223,6 +223,12 @@ if (!empty($preloadedGame['visitor_color'])) {
     </footer>
   </div>
 
+  <button type="button" id="backToTopButton" class="back-to-top" aria-label="Back to top">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M18 15.5 12 9.5 6 15.5" />
+    </svg>
+  </button>
+
   <script src="assets/ui_helpers.js"></script>
   <script src="assets/board_id_map.js"></script>
   <script src="assets/chess.min.js"></script>
@@ -283,6 +289,10 @@ if (!empty($preloadedGame['visitor_color'])) {
       const notationMount = document.getElementById('notationMount');
       const toggleNotationBtn = document.getElementById('toggleNotation');
       const notationStatus = document.getElementById('notationStatus');
+      const backToTopBtn = document.getElementById('backToTopButton');
+      const prefersReducedMotion = (typeof window !== 'undefined' && window.matchMedia)
+        ? window.matchMedia('(prefers-reduced-motion: reduce)')
+        : null;
 
       boardEl.classList.add('locked');
 
@@ -1543,6 +1553,25 @@ if (!empty($preloadedGame['visitor_color'])) {
           } else {
             showNotation();
           }
+        });
+      }
+
+      function updateBackToTopVisibility() {
+        if (!backToTopBtn) return;
+        if (window.scrollY > 200) {
+          backToTopBtn.classList.add('visible');
+        } else {
+          backToTopBtn.classList.remove('visible');
+        }
+      }
+
+      if (backToTopBtn) {
+        updateBackToTopVisibility();
+        window.addEventListener('scroll', updateBackToTopVisibility, { passive: true });
+        backToTopBtn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          const behavior = (prefersReducedMotion && prefersReducedMotion.matches) ? 'auto' : 'smooth';
+          window.scrollTo({ top: 0, behavior });
         });
       }
     })();
