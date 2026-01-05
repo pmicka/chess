@@ -1,0 +1,7 @@
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# Redirect bare /chess requests (no trailing slash) to the canonical trailing-slash URL.
+RewriteCond %{THE_REQUEST} \s/chess(?:\s|\?)
+RewriteRule ^$ https://patrickmicka.com/chess/ [R=301,L]
+</IfModule>
