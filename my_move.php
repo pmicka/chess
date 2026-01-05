@@ -360,6 +360,104 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
         ].join('|');
       }
 
+      const PLY_NUMBERED_PATTERN = /\b\d+\.\.\./;
+
+      function isPlyNumberedPgn(text) {
+        return PLY_NUMBERED_PATTERN.test(text || '');
+      }
+
+      function buildPgnFromSansMoves(sansMoves) {
+        if (!Array.isArray(sansMoves) || sansMoves.length === 0) return '';
+        const parts = [];
+        sansMoves.forEach((san, idx) => {
+          const moveNo = Math.floor(idx / 2) + 1;
+          if (idx % 2 === 0) {
+            parts.push(`${moveNo}. ${san}`);
+          } else {
+            parts.push(san);
+          }
+        });
+        return parts.join(' ').trim();
+      }
+
+      function normalizePlyNumberedPGN(text) {
+        const tokens = (text || '').trim().split(/\s+/).filter(Boolean);
+        if (!tokens.length) return '';
+
+        const entries = [];
+        for (let i = 0; i < tokens.length; i += 1) {
+          const match = tokens[i].match(/^(\d+)\.(\.\.)?$/);
+          if (!match) continue;
+          const san = tokens[i + 1];
+          if (!san) break;
+          entries.push({
+            num: parseInt(match[1], 10),
+            color: match[2] ? 'b' : 'w',
+            san,
+          });
+          i += 1;
+        }
+
+        if (!entries.length) return text.trim();
+
+        const needsRenumber = entries.some((entry, idx) => entry.num !== Math.floor(idx / 2) + 1);
+        const moveMap = new Map();
+
+        entries.forEach((entry, idx) => {
+          const moveNum = needsRenumber ? (Math.floor(idx / 2) + 1) : entry.num;
+          if (!moveMap.has(moveNum)) {
+            moveMap.set(moveNum, { white: null, black: null });
+          }
+          const slot = moveMap.get(moveNum);
+          if (entry.color === 'b') {
+            if (!slot.black) slot.black = entry.san;
+          } else if (!slot.white) {
+            slot.white = entry.san;
+          }
+        });
+
+        const orderedNumbers = Array.from(moveMap.keys()).sort((a, b) => a - b);
+        const parts = [];
+        orderedNumbers.forEach((num) => {
+          const slot = moveMap.get(num);
+          if (!slot) return;
+          if (slot.white) {
+            parts.push(`${num}. ${slot.white}${slot.black ? ` ${slot.black}` : ''}`);
+          } else if (slot.black) {
+            parts.push(`${num}... ${slot.black}`);
+          }
+        });
+
+        return parts.join(' ').trim();
+      }
+
+      function normalizeMovetext(pgnText) {
+        const trimmed = (pgnText || '').trim();
+        if (!trimmed) return '';
+        if (isPlyNumberedPgn(trimmed)) {
+          const normalized = normalizePlyNumberedPGN(trimmed);
+          if (normalized) return normalized;
+        }
+        return trimmed;
+      }
+
+      function parseSansFromPgn(pgnText) {
+        const normalized = normalizeMovetext(pgnText);
+        if (!normalized) return [];
+        const parser = new Chess();
+        const loaded = parser.load_pgn(normalized, { sloppy: true });
+        if (!loaded) return [];
+        return parser.history();
+      }
+
+      function deriveDisplayPgn(rawPgn, sansMoves) {
+        if (Array.isArray(sansMoves) && sansMoves.length) {
+          const rendered = buildPgnFromSansMoves(sansMoves);
+          return normalizeMovetext(rendered);
+        }
+        return normalizeMovetext(rawPgn || '');
+      }
+
       function handlePromotionInterrupted(newFingerprint) {
         if (!selectionStateFingerprint || !newFingerprint) return;
         if (selectionStateFingerprint === newFingerprint) return;
@@ -1019,13 +1117,13 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
             hostColorLabel.textContent = youColor;
             turnLabel.textContent = state.turn_color;
             renderScoreLine(state.score, state.score_line);
-            setNotationData({ fen: state.fen, pgn: state.pgn });
 
             game.reset();
             let loadedFromPgn = false;
-            if (state.pgn) {
+            const normalizedPgn = normalizeMovetext(state.pgn);
+            if (normalizedPgn) {
               try {
-                game.load_pgn(state.pgn);
+                game.load_pgn(normalizedPgn);
                 loadedFromPgn = true;
               } catch (err) {
                 loadedFromPgn = false;
@@ -1039,6 +1137,9 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
                 throw new Error('Invalid FEN from server');
               }
             }
+
+            const displayPgn = deriveDisplayPgn(normalizedPgn, game.history());
+            setNotationData({ fen: state.fen, pgn: displayPgn });
 
             debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
             renderBoard();
