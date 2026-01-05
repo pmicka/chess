@@ -1315,6 +1315,9 @@ textarea {
   .action-row .action-stack {
     width: 100%;
     align-items: stretch;
+    flex: 0 0 auto;
+    min-height: 0;
+    gap: 6px;
   }
 
   .action-row .status-stack {
@@ -1339,7 +1342,11 @@ textarea {
 
   .turnstile-wrap {
     justify-content: flex-start;
-    margin-top: 2px;
+    margin-top: 0;
+  }
+
+  .turnstile-wrap .cf-turnstile {
+    margin: 0;
   }
 
   .board-stack {
@@ -1384,12 +1391,8 @@ textarea {
     font-size: 13px;
   }
 
-  .action-row .action-stack {
-    gap: 8px;
-  }
-
   .control-row.review-row {
-    margin-top: 2px;
+    margin-top: 0;
   }
 
   .review-row {
