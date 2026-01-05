@@ -1459,7 +1459,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         fenHeader.appendChild(fenLabel);
         fenHeader.appendChild(fenActions);
         const fenBox = document.createElement('pre');
-        fenBox.className = 'notation-readout';
+        fenBox.className = 'notation-readout notation-readout--fen';
         fenBox.setAttribute('tabindex', '0');
         fenBox.setAttribute('aria-label', 'Current FEN');
         fenBlock.appendChild(fenHeader);
@@ -1486,7 +1486,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         pgnHeader.appendChild(pgnLabel);
         pgnHeader.appendChild(pgnActions);
         const pgnBox = document.createElement('pre');
-        pgnBox.className = 'notation-readout';
+        pgnBox.className = 'notation-readout notation-readout--pgn';
         pgnBox.setAttribute('tabindex', '0');
         pgnBox.setAttribute('aria-label', 'Current PGN');
         pgnBlock.appendChild(pgnHeader);
