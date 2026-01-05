@@ -45,13 +45,6 @@ try {
 }
 
 $scoreTotals = score_load();
-$scoreLineText = sprintf(
-    'overall: host %d · world %d · draws %d',
-    $scoreTotals['host_wins'] ?? 0,
-    $scoreTotals['world_wins'] ?? 0,
-    $scoreTotals['draws'] ?? 0
-);
-
 $baseUrl = defined('BASE_URL') ? trim((string)BASE_URL) : '';
 $canonicalUrl = 'https://patrickmicka.com/chess/';
 $googleVerification = defined('GOOGLE_SITE_VERIFICATION') ? trim((string)GOOGLE_SITE_VERIFICATION) : '';
@@ -61,7 +54,6 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
 
 $chessAppConfig = [
     'score' => $scoreTotals,
-    'score_line' => $scoreLineText,
 ];
 
 if (!empty($preloadedGame['visitor_color'])) {
@@ -95,102 +87,102 @@ if (!empty($preloadedGame['visitor_color'])) {
   <meta name="theme-color" content="#0b0b0b" />
   <link rel="manifest" href="/chess/manifest.webmanifest">
   <script type="application/ld+json">
-  <?= json_encode([
-      '@context' => 'https://schema.org',
-      '@type' => 'SoftwareApplication',
-      'name' => 'Me vs the World — Asynchronous Chess Experiment',
-      'description' => $pageDescription,
-      'url' => $canonicalUrl,
-      'applicationCategory' => 'Game',
-      'operatingSystem' => 'Web',
-      'author' => [
-          '@type' => 'Person',
-          'name' => 'Patrick Micka',
-      ],
-      'license' => $canonicalUrl . 'LICENSE',
-      'codeRepository' => 'https://github.com/pmicka/chess',
-  ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) ?>
+    <?= json_encode([
+        '@context' => 'https://schema.org',
+        '@type' => 'SoftwareApplication',
+        'name' => 'Me vs the World — Asynchronous Chess Experiment',
+        'description' => $pageDescription,
+        'url' => $canonicalUrl,
+        'applicationCategory' => 'Game',
+        'operatingSystem' => 'Web',
+        'author' => [
+            '@type' => 'Person',
+            'name' => 'Patrick Micka',
+        ],
+        'license' => $canonicalUrl . 'LICENSE',
+        'codeRepository' => 'https://github.com/pmicka/chess',
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n" ?>
   </script>
   <script type="application/json" id="appConfig"><?= json_encode($chessAppConfig, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?></script>
   <link rel="stylesheet" href="assets/css/style.css">
-  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons//apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons//favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons//favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16x16.png">
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
   <div class="wrap">
-    <h1>Me vs the World Chess</h1>
+    <h1>The Internet Gambit</h1>
     <p class="subhead meta-line">
       <span>Visitors play <strong id="visitorColorLabel">black</strong></span>
       <span>Host plays <strong id="hostColorLabel">white</strong></span>
       <a class="about-link" href="#about">About</a>
     </p>
 
-      <div class="card stage-card">
-        <div class="board-stack">
-          <div class="board-container">
-            <div class="board-shell">
-              <div id="board" aria-label="Chess board" role="application"></div>
-              <div id="promotionChooser" class="promotion-chooser" aria-live="polite" aria-label="Choose promotion piece">
-                <div class="promotion-band" role="group" aria-label="Promotion options">
-                  <div class="promotion-buttons">
-                    <button type="button" class="promo-btn active" data-piece="q" aria-label="Promote to Queen">
-                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wQ.svg">
-                    </button>
-                    <button type="button" class="promo-btn" data-piece="r" aria-label="Promote to Rook">
-                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wR.svg">
-                    </button>
-                    <button type="button" class="promo-btn" data-piece="b" aria-label="Promote to Bishop">
-                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wB.svg">
-                    </button>
-                    <button type="button" class="promo-btn" data-piece="n" aria-label="Promote to Knight">
-                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wN.svg">
-                    </button>
-                  </div>
+    <div class="card stage-card">
+      <div class="board-stack">
+        <div class="board-container">
+          <div class="board-shell">
+            <div id="board" aria-label="Chess board" role="application"></div>
+            <div id="promotionChooser" class="promotion-chooser" aria-live="polite" aria-label="Choose promotion piece">
+              <div class="promotion-band" role="group" aria-label="Promotion options">
+                <div class="promotion-buttons">
+                  <button type="button" class="promo-btn active" data-piece="q" aria-label="Promote to Queen">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wQ.svg">
+                  </button>
+                  <button type="button" class="promo-btn" data-piece="r" aria-label="Promote to Rook">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wR.svg">
+                  </button>
+                  <button type="button" class="promo-btn" data-piece="b" aria-label="Promote to Bishop">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wB.svg">
+                  </button>
+                  <button type="button" class="promo-btn" data-piece="n" aria-label="Promote to Knight">
+                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wN.svg">
+                  </button>
                 </div>
               </div>
             </div>
           </div>
-          <div class="scoreboard" id="scoreboard" aria-label="Scoreboard">
-            <div class="score-grid">
-              <div class="score-item">
-                <span class="score-label">Host</span>
-                <span class="score-value" id="scoreHostValue">0</span>
-              </div>
-              <div class="score-item">
-                <span class="score-label">World</span>
-                <span class="score-value" id="scoreWorldValue">0</span>
-              </div>
-              <div class="score-item">
-                <span class="score-label">Draws</span>
-                <span class="score-value" id="scoreDrawValue">0</span>
-              </div>
-            </div>
-            <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
-          </div>
         </div>
-        <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
-          <div>
-            <h3 id="gameOverTitle"></h3>
-          <p id="gameOverBody" class="muted" style="margin:0;"></p>
+        <div class="scoreboard" id="scoreboard" aria-label="Scoreboard">
+          <div class="score-grid">
+            <div class="score-item">
+              <span class="score-label">Host</span>
+              <span class="score-value" id="scoreHostValue">0</span>
+            </div>
+            <div class="score-item">
+              <span class="score-label">World</span>
+              <span class="score-value" id="scoreWorldValue">0</span>
+            </div>
+            <div class="score-item">
+              <span class="score-label">Draws</span>
+              <span class="score-value" id="scoreDrawValue">0</span>
+            </div>
+          </div>
+          <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
+        </div>
+      </div>
+      <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
+        <div>
+          <h3 id="gameOverTitle"></h3>
+          <p id="gameOverBody" class="muted"></p>
         </div>
         <div class="gameover-actions">
           <button id="gameOverRefresh" type="button">Refresh</button>
         </div>
-        </div>
-        <div class="control-bay">
-          <div class="control-row action-row">
-            <div class="status-stack">
-              <div class="status-line" aria-live="polite">
-                <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
-                <span id="statusMsg" class="muted"></span>
-              </div>
+      </div>
+      <div class="control-bay">
+        <div class="control-row action-row">
+          <div class="status-stack">
+            <div class="status-line" aria-live="polite">
+              <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+              <span id="statusMsg" class="muted"></span>
             </div>
-            <div class="action-stack">
-              <div class="primary-buttons">
-                <button id="btnSubmit" disabled>Submit move</button>
-                <button id="btnRefresh">Refresh</button>
+          </div>
+          <div class="action-stack">
+            <div class="primary-buttons">
+              <button id="btnSubmit" disabled>Submit move</button>
+              <button id="btnRefresh">Refresh</button>
             </div>
             <div class="turnstile-wrap">
               <div
@@ -202,66 +194,65 @@ if (!empty($preloadedGame['visitor_color'])) {
               ></div>
             </div>
           </div>
-          </div>
-          <div class="control-row review-row">
-            <div class="history-controls">
-              <div class="history-buttons">
-                <button id="btnBack" type="button">Back</button>
-                <button id="btnForward" type="button">Forward</button>
-                <button id="btnLive" type="button">Live</button>
-              </div>
-              <span id="historyStatus" class="history-chip" aria-live="polite"></span>
+        </div>
+        <div class="control-row review-row">
+          <div class="history-controls">
+            <div class="history-buttons">
+              <button id="btnBack" type="button">Back</button>
+              <button id="btnForward" type="button">Forward</button>
+              <button id="btnLive" type="button">Live</button>
             </div>
+            <span id="historyStatus" class="history-chip" aria-live="polite"></span>
           </div>
-          <div id="historyNotice" class="banner" role="status" aria-live="polite">
-            <span>Reviewing history — click Live to return before submitting a move.</span>
-          </div>
-          <p class="muted selected-move" hidden>
-            Selected move: <code id="movePreview">none</code>
-          </p>
-          <div id="updateBanner" class="banner" role="status" aria-live="polite">
-            <span>New server state available. Refresh to sync.</span>
-            <button id="btnBannerRefresh">Refresh</button>
-          </div>
-          <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
-          <div class="hud-details">
-            <button id="detailsToggle" class="details-toggle" type="button" aria-expanded="false" aria-controls="hudDetailsPanel">Details</button>
-            <div id="hudDetailsPanel" class="hud-details-panel" hidden>
-              <div id="gameSnapshot" class="game-snapshot" aria-live="polite">
-                <div class="snapshot-row">
-                  <span class="snapshot-label muted">Opening</span>
-                  <span class="snapshot-value" id="snapshotOpening">Unknown</span>
-                </div>
-                <div class="snapshot-row">
-                  <span class="snapshot-label muted">Ply count</span>
-                  <span class="snapshot-value" id="snapshotPly">0 ply · move 0</span>
-                </div>
-                <div class="snapshot-row">
-                  <span class="snapshot-label muted">Last move</span>
-                  <span class="snapshot-value" id="snapshotLastMove">—</span>
-                </div>
-                <div class="snapshot-row">
-                  <span class="snapshot-label muted">Status</span>
-                  <span class="snapshot-value" id="snapshotStatus">—</span>
+        </div>
+        <div id="historyNotice" class="banner" role="status" aria-live="polite">
+          <span>Reviewing history — click Live to return before submitting a move.</span>
+        </div>
+        <p class="muted selected-move" hidden>
+          Selected move: <code id="movePreview">none</code>
+        </p>
+        <div id="updateBanner" class="banner" role="status" aria-live="polite">
+          <span>New server state available. Refresh to sync.</span>
+          <button id="btnBannerRefresh">Refresh</button>
+        </div>
+        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
+        <div class="hud-details">
+          <button id="detailsToggle" class="details-toggle" type="button" aria-expanded="false" aria-controls="hudDetailsPanel">Details</button>
+          <div id="hudDetailsPanel" class="hud-details-panel" hidden>
+            <div id="gameSnapshot" class="game-snapshot" aria-live="polite">
+              <div class="snapshot-row">
+                <span class="snapshot-label muted">Opening</span>
+                <span class="snapshot-value" id="snapshotOpening">Unknown</span>
+              </div>
+              <div class="snapshot-row">
+                <span class="snapshot-label muted">Ply count</span>
+                <span class="snapshot-value" id="snapshotPly">0 ply · move 0</span>
+              </div>
+              <div class="snapshot-row">
+                <span class="snapshot-label muted">Last move</span>
+                <span class="snapshot-value" id="snapshotLastMove">—</span>
+              </div>
+              <div class="snapshot-row">
+                <span class="snapshot-label muted">Status</span>
+                <span class="snapshot-value" id="snapshotStatus">—</span>
+              </div>
+            </div>
+            <div class="details-divider" aria-hidden="true"></div>
+            <div class="details-advanced">
+              <div class="details-advanced-header">
+                <p class="muted details-advanced-title">Advanced</p>
+                <div class="notation-controls">
+                  <button id="toggleNotation" class="secondary ghost-button button-compact" type="button">Show notation</button>
+                  <span id="notationStatus" class="muted" aria-live="polite"></span>
                 </div>
               </div>
-              <div class="details-divider" aria-hidden="true"></div>
-              <div class="details-advanced">
-                <div class="details-advanced-header">
-                  <p class="muted details-advanced-title">Advanced</p>
-                  <div class="notation-controls">
-                    <button id="toggleNotation" class="secondary ghost-button button-compact" type="button">Show notation</button>
-                    <span id="notationStatus" class="muted" aria-live="polite"></span>
-                  </div>
-                </div>
-                <div id="notationMount" class="notation-mount"></div>
-              </div>
+              <div id="notationMount" class="notation-mount"></div>
             </div>
           </div>
         </div>
       </div>
+    </div>
 
-    <p id="scoreLine" class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
     <section id="about" class="about-section" aria-labelledby="about-heading">
       <h2 id="about-heading">About this project</h2>
       <p class="about-lede">This is a small experiment in building things by doing them.</p>
@@ -332,7 +323,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       const movePreview = document.getElementById('movePreview');
       const selectedMoveRow = document.querySelector('.selected-move');
       const errorBox = document.getElementById('errorBox');
-      const scoreLineEl = document.getElementById('scoreLine');
       const scoreboardEl = document.getElementById('scoreboard');
       const scoreHostValue = document.getElementById('scoreHostValue');
       const scoreWorldValue = document.getElementById('scoreWorldValue');
@@ -1034,23 +1024,6 @@ if (!empty($preloadedGame['visitor_color'])) {
           }
         }
         scoreboardEl.dataset.updatedAt = scoreData?.updated_at || '';
-      }
-
-      function renderScoreLine(scoreData, fallbackLine = '') {
-        renderScoreboard(scoreData);
-        if (!scoreLineEl) return;
-        if (scoreData && typeof scoreData === 'object') {
-          const hostWins = Number.isFinite(Number(scoreData.host_wins)) ? Number(scoreData.host_wins) : 0;
-          const worldWins = Number.isFinite(Number(scoreData.world_wins)) ? Number(scoreData.world_wins) : 0;
-          const draws = Number.isFinite(Number(scoreData.draws)) ? Number(scoreData.draws) : 0;
-          scoreLineEl.textContent = `overall: host ${hostWins} · world ${worldWins} · draws ${draws}`;
-          scoreLineEl.dataset.updatedAt = scoreData.updated_at || '';
-          return;
-        }
-        const fallback = fallbackLine || scoreLineEl.textContent;
-        if (fallback) {
-          scoreLineEl.textContent = fallback;
-        }
       }
 
       function blockForStateError(message) {
@@ -1835,7 +1808,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         selectionIsStale = false;
         clearErrors();
 
-        renderScoreLine(canonicalState?.score, canonicalState?.score_line);
+        renderScoreboard(canonicalState?.score);
 
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = hostColor;
@@ -1987,7 +1960,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         errorBox.classList.add('show');
       }
 
-      renderScoreLine(appConfig.score, appConfig.score_line);
+      renderScoreboard(appConfig.score);
       renderBoard();
       updateHistoryUI();
       notationStatus.textContent = 'Notation hidden';

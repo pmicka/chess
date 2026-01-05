@@ -127,9 +127,9 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
   <meta name="twitter:description" content="Me vs. the world, one board at a time." />
   <meta name="twitter:image" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
   <link rel="stylesheet" href="assets/css/style.css">
-  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons//apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons//favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons//favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16x16.png">
   <title><?= htmlspecialchars($pageTitle, ENT_QUOTES, 'UTF-8') ?></title>
 </head>
 <body>
@@ -198,7 +198,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
         <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
           <div>
             <h3 id="gameOverTitle"></h3>
-            <p id="gameOverBody" class="muted" style="margin:0;"></p>
+            <p id="gameOverBody" class="muted"></p>
           </div>
           <div class="gameover-actions">
             <button id="btnNextGame" type="button">Start next game</button>
