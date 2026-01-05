@@ -275,6 +275,44 @@ a:focus-visible {
   margin-top: var(--space-16);
 }
 
+.game-snapshot {
+  margin: 6px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tight);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.snapshot-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.snapshot-row + .snapshot-row {
+  border-top: 1px solid var(--border);
+  padding-top: 9px;
+  margin-top: 5px;
+}
+
+.snapshot-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.snapshot-value {
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: right;
+}
+
 .glass-card {
   background: rgba(255, 255, 255, 0.03);
   border-color: rgba(255, 255, 255, 0.1);
