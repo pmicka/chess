@@ -74,7 +74,7 @@ if (!empty($preloadedGame['visitor_color'])) {
   <meta property="og:type" content="website" />
   <meta property="og:title" content="The Internet Gambit" />
   <meta property="og:description" content="Me vs. the world, one board at a time." />
-  <meta property="og:url" content="https://patrickmicka.com/chess/" />
+  <meta property="og:url" content="<?= htmlspecialchars($canonicalUrl, ENT_QUOTES, 'UTF-8') ?>" />
   <meta property="og:image" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
   <meta property="og:image:secure_url" content="<?= htmlspecialchars($socialImageUrl, ENT_QUOTES, 'UTF-8') ?>" />
   <meta property="og:image:width" content="1200" />
