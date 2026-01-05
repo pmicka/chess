@@ -37,6 +37,7 @@ body {
   line-height: 1.6;
   letter-spacing: 0.01em;
   position: relative;
+  isolation: isolate;
   overflow-x: hidden;
 }
 
@@ -45,19 +46,18 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background-image: url("/chess/assets/BG.jpg");
+  background-image: url("/chess/assets/bg.jpg");
   background-image: image-set(
-    url("/chess/assets/BG.webp") type("image/webp"),
-    url("/chess/assets/BG.jpg") type("image/jpeg")
+    url("/chess/assets/bg.webp") type("image/webp"),
+    url("/chess/assets/bg.jpg") type("image/jpeg")
   );
   background-size: cover;
   background-position: left center;
   background-repeat: no-repeat;
-  background-attachment: fixed;
-  filter: blur(8px) saturate(0.9) contrast(1.05);
-  opacity: 0.26;
+  filter: blur(10px) saturate(0.9) contrast(1.05);
+  opacity: 0.28;
   transform: scale(1.03);
-  z-index: 0;
+  z-index: -2;
 }
 
 body::after {
@@ -66,11 +66,21 @@ body::after {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(120% 120% at 50% 40%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.7) 100%),
-    radial-gradient(70% 70% at 15% 20%, rgba(255, 255, 255, 0.06), transparent 35%),
-    linear-gradient(180deg, rgba(4, 7, 12, 0.82) 0%, rgba(4, 7, 12, 0.94) 100%);
+    radial-gradient(120% 120% at 50% 40%, rgba(0, 0, 0, 0) 45%, rgba(0, 0, 0, 0.55) 100%),
+    radial-gradient(70% 70% at 15% 20%, rgba(255, 255, 255, 0.04), transparent 38%),
+    linear-gradient(180deg, rgba(4, 7, 12, 0.76) 0%, rgba(4, 7, 12, 0.9) 100%);
   background-blend-mode: multiply, screen, normal;
-  z-index: 1;
+  z-index: -1;
+}
+
+/* Debug: add "debug-bg" class to <body> to verify background. */
+body.debug-bg::before {
+  opacity: 0.75;
+  filter: none;
+}
+
+body.debug-bg::after {
+  opacity: 0.3;
 }
 
 .wrap {
@@ -78,7 +88,7 @@ body::after {
   margin: 0 auto;
   padding: 40px 18px 64px;
   position: relative;
-  z-index: 3;
+  z-index: 1;
 }
 
 h1,
@@ -684,7 +694,6 @@ textarea {
   body::before,
   body::after {
     position: absolute;
-    background-attachment: scroll;
   }
 
   .stage-card {
@@ -697,10 +706,6 @@ textarea {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
-  }
-
-  body::before {
-    background-attachment: scroll;
   }
 
   .spinner {
