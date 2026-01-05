@@ -129,27 +129,46 @@ if (!empty($preloadedGame['visitor_color'])) {
     </p>
 
       <div class="card stage-card">
-        <div class="board-container">
-          <div class="board-shell">
-            <div id="board" aria-label="Chess board" role="application"></div>
-            <div id="promotionChooser" class="promotion-chooser" aria-live="polite" aria-label="Choose promotion piece">
-              <div class="promotion-band" role="group" aria-label="Promotion options">
-                <div class="promotion-buttons">
-                  <button type="button" class="promo-btn active" data-piece="q" aria-label="Promote to Queen">
-                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wQ.svg">
-                  </button>
-                  <button type="button" class="promo-btn" data-piece="r" aria-label="Promote to Rook">
-                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wR.svg">
-                  </button>
-                  <button type="button" class="promo-btn" data-piece="b" aria-label="Promote to Bishop">
-                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wB.svg">
-                  </button>
-                  <button type="button" class="promo-btn" data-piece="n" aria-label="Promote to Knight">
-                    <img class="promotion-piece" alt="" src="assets/pieces/lichess/wN.svg">
-                  </button>
+        <div class="board-stack">
+          <div class="board-container">
+            <div class="board-shell">
+              <div id="board" aria-label="Chess board" role="application"></div>
+              <div id="promotionChooser" class="promotion-chooser" aria-live="polite" aria-label="Choose promotion piece">
+                <div class="promotion-band" role="group" aria-label="Promotion options">
+                  <div class="promotion-buttons">
+                    <button type="button" class="promo-btn active" data-piece="q" aria-label="Promote to Queen">
+                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wQ.svg">
+                    </button>
+                    <button type="button" class="promo-btn" data-piece="r" aria-label="Promote to Rook">
+                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wR.svg">
+                    </button>
+                    <button type="button" class="promo-btn" data-piece="b" aria-label="Promote to Bishop">
+                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wB.svg">
+                    </button>
+                    <button type="button" class="promo-btn" data-piece="n" aria-label="Promote to Knight">
+                      <img class="promotion-piece" alt="" src="assets/pieces/lichess/wN.svg">
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
+          <div class="scoreboard" id="scoreboard" aria-label="Scoreboard">
+            <div class="score-grid">
+              <div class="score-item">
+                <span class="score-label">Host</span>
+                <span class="score-value" id="scoreHostValue">0</span>
+              </div>
+              <div class="score-item">
+                <span class="score-label">World</span>
+                <span class="score-value" id="scoreWorldValue">0</span>
+              </div>
+              <div class="score-item">
+                <span class="score-label">Draws</span>
+                <span class="score-value" id="scoreDrawValue">0</span>
+              </div>
+            </div>
+            <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
           </div>
         </div>
         <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
@@ -161,42 +180,51 @@ if (!empty($preloadedGame['visitor_color'])) {
           <button id="gameOverRefresh" type="button">Refresh</button>
         </div>
       </div>
-      <div class="turnstile-wrap">
-        <div
-          class="cf-turnstile"
-          data-sitekey="<?= htmlspecialchars(TURNSTILE_SITE_KEY ?? '', ENT_QUOTES) ?>"
-          data-callback="onTurnstileSuccess"
-          data-expired-callback="onTurnstileExpired"
-          data-error-callback="onTurnstileError"
-        ></div>
-      </div>
-      <div class="controls">
-        <button id="btnRefresh">Refresh</button>
-        <button id="btnSubmit" disabled>Submit move</button>
-      </div>
-      <div class="status-line" aria-live="polite">
-        <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
-        <span id="statusMsg" class="muted"></span>
-      </div>
-      <div class="history-row">
-        <div class="history-controls">
-          <button id="btnBack" type="button">Back</button>
-          <button id="btnForward" type="button">Forward</button>
-          <button id="btnLive" type="button">Live</button>
+      <div class="control-bay">
+        <div class="control-row action-row">
+          <div class="status-stack">
+            <div class="status-line" aria-live="polite">
+              <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+              <span id="statusMsg" class="muted"></span>
+            </div>
+            <p class="muted action-meta">Current turn: <strong id="turnLabelSecondary">…</strong></p>
+          </div>
+          <div class="action-stack">
+            <div class="primary-buttons">
+              <button id="btnSubmit" disabled>Submit move</button>
+              <button id="btnRefresh">Refresh</button>
+            </div>
+            <div class="turnstile-wrap">
+              <div
+                class="cf-turnstile"
+                data-sitekey="<?= htmlspecialchars(TURNSTILE_SITE_KEY ?? '', ENT_QUOTES) ?>"
+                data-callback="onTurnstileSuccess"
+                data-expired-callback="onTurnstileExpired"
+                data-error-callback="onTurnstileError"
+              ></div>
+            </div>
+          </div>
         </div>
-        <p id="historyStatus" class="muted history-status" aria-live="polite"></p>
+        <div class="control-row review-row">
+          <div class="history-controls">
+            <button id="btnBack" type="button">Back</button>
+            <button id="btnForward" type="button">Forward</button>
+            <button id="btnLive" type="button">Live</button>
+          </div>
+          <p id="historyStatus" class="muted history-status" aria-live="polite"></p>
+        </div>
         <div id="historyNotice" class="banner" role="status" aria-live="polite">
           <span>Reviewing history — click Live to return before submitting a move.</span>
         </div>
+        <p class="muted selected-move">
+          Selected move: <code id="movePreview">none</code>
+        </p>
+        <div id="updateBanner" class="banner" role="status" aria-live="polite">
+          <span>New server state available. Refresh to sync.</span>
+          <button id="btnBannerRefresh">Refresh</button>
+        </div>
+        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
       </div>
-      <p class="muted selected-move">
-        Selected move: <code id="movePreview">none</code>
-      </p>
-      <div id="updateBanner" class="banner" role="status" aria-live="polite">
-        <span>New server state available. Refresh to sync.</span>
-        <button id="btnBannerRefresh">Refresh</button>
-      </div>
-      <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
     </div>
 
     <div class="card">
@@ -279,9 +307,15 @@ if (!empty($preloadedGame['visitor_color'])) {
       const debugBox = document.getElementById('debugBox');
       const errorBox = document.getElementById('errorBox');
       const scoreLineEl = document.getElementById('scoreLine');
+      const scoreboardEl = document.getElementById('scoreboard');
+      const scoreHostValue = document.getElementById('scoreHostValue');
+      const scoreWorldValue = document.getElementById('scoreWorldValue');
+      const scoreDrawValue = document.getElementById('scoreDrawValue');
+      const scoreLastResult = document.getElementById('scoreLastResult');
       const visitorColorLabel = document.getElementById('visitorColorLabel');
       const hostColorLabel = document.getElementById('hostColorLabel');
       const turnLabel = document.getElementById('turnLabel');
+      const turnLabelSecondary = document.getElementById('turnLabelSecondary');
       const turnstileWidget = document.querySelector('.cf-turnstile');
       const updateBanner = document.getElementById('updateBanner');
       const updateBannerText = updateBanner ? updateBanner.querySelector('span') : null;
@@ -825,7 +859,31 @@ if (!empty($preloadedGame['visitor_color'])) {
         statusSpinner.classList.toggle('show', showSpinner);
       }
 
+      function renderScoreboard(scoreData) {
+        if (!scoreboardEl || !scoreData || typeof scoreData !== 'object') return;
+        const hostWins = Number.isFinite(Number(scoreData.host_wins)) ? Number(scoreData.host_wins) : 0;
+        const worldWins = Number.isFinite(Number(scoreData.world_wins)) ? Number(scoreData.world_wins) : 0;
+        const draws = Number.isFinite(Number(scoreData.draws)) ? Number(scoreData.draws) : 0;
+        if (scoreHostValue) scoreHostValue.textContent = hostWins;
+        if (scoreWorldValue) scoreWorldValue.textContent = worldWins;
+        if (scoreDrawValue) scoreDrawValue.textContent = draws;
+        if (scoreLastResult) {
+          const friendlyMap = { host: 'Host win', world: 'World win', draw: 'Draw' };
+          const lastRaw = (scoreData && typeof scoreData.last_result === 'string') ? scoreData.last_result : '';
+          if (lastRaw) {
+            const friendly = friendlyMap[lastRaw] || lastRaw;
+            scoreLastResult.textContent = `Last result: ${friendly}`;
+            scoreLastResult.classList.add('show');
+          } else {
+            scoreLastResult.textContent = '';
+            scoreLastResult.classList.remove('show');
+          }
+        }
+        scoreboardEl.dataset.updatedAt = scoreData?.updated_at || '';
+      }
+
       function renderScoreLine(scoreData, fallbackLine = '') {
+        renderScoreboard(scoreData);
         if (!scoreLineEl) return;
         if (scoreData && typeof scoreData === 'object') {
           const hostWins = Number.isFinite(Number(scoreData.host_wins)) ? Number(scoreData.host_wins) : 0;
@@ -1259,6 +1317,9 @@ if (!empty($preloadedGame['visitor_color'])) {
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = hostColor;
         turnLabel.textContent = canonicalState.turn_color;
+        if (turnLabelSecondary) {
+          turnLabelSecondary.textContent = canonicalState.turn_color;
+        }
 
         setNotationData({ fen: canonicalState.fen, pgn: canonicalState.pgn });
 
