@@ -124,7 +124,6 @@ if (!empty($preloadedGame['visitor_color'])) {
     <p class="subhead meta-line">
       <span>Visitors play <strong id="visitorColorLabel">black</strong></span>
       <span>Host plays <strong id="hostColorLabel">white</strong></span>
-      <span>Turn: <strong id="turnLabel">…</strong></span>
       <a class="about-link" href="#about">About</a>
     </p>
 
@@ -179,20 +178,22 @@ if (!empty($preloadedGame['visitor_color'])) {
         <div class="gameover-actions">
           <button id="gameOverRefresh" type="button">Refresh</button>
         </div>
-      </div>
-      <div class="control-bay">
-        <div class="control-row action-row">
-          <div class="status-stack">
-            <div class="status-line" aria-live="polite">
-              <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
-              <span id="statusMsg" class="muted"></span>
+        </div>
+        <div class="control-bay">
+          <div class="control-row action-row">
+            <div class="status-stack">
+              <div class="status-line" aria-live="polite">
+                <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+                <span id="statusMsg" class="muted"></span>
+              </div>
+              <div class="status-meta">
+                <span class="pill muted" id="turnPill" aria-live="polite">Turn: <strong id="turnLabel">…</strong></span>
+              </div>
             </div>
-            <p class="muted action-meta">Current turn: <strong id="turnLabelSecondary">…</strong></p>
-          </div>
-          <div class="action-stack">
-            <div class="primary-buttons">
-              <button id="btnSubmit" disabled>Submit move</button>
-              <button id="btnRefresh">Refresh</button>
+            <div class="action-stack">
+              <div class="primary-buttons">
+                <button id="btnSubmit" disabled>Submit move</button>
+                <button id="btnRefresh">Refresh</button>
             </div>
             <div class="turnstile-wrap">
               <div
@@ -204,57 +205,60 @@ if (!empty($preloadedGame['visitor_color'])) {
               ></div>
             </div>
           </div>
-        </div>
-        <div class="control-row review-row">
-          <div class="history-controls">
-            <button id="btnBack" type="button">Back</button>
-            <button id="btnForward" type="button">Forward</button>
-            <button id="btnLive" type="button">Live</button>
           </div>
-          <p id="historyStatus" class="muted history-status" aria-live="polite"></p>
+          <div class="control-row review-row">
+            <div class="history-controls">
+              <div class="history-buttons">
+                <button id="btnBack" type="button">Back</button>
+                <button id="btnForward" type="button">Forward</button>
+                <button id="btnLive" type="button">Live</button>
+              </div>
+              <span id="historyStatus" class="history-chip" aria-live="polite"></span>
+            </div>
+          </div>
+          <div id="historyNotice" class="banner" role="status" aria-live="polite">
+            <span>Reviewing history — click Live to return before submitting a move.</span>
+          </div>
+          <p class="muted selected-move">
+            Selected move: <code id="movePreview">none</code>
+          </p>
+          <div id="updateBanner" class="banner" role="status" aria-live="polite">
+            <span>New server state available. Refresh to sync.</span>
+            <button id="btnBannerRefresh">Refresh</button>
+          </div>
+          <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
+          <div class="hud-details">
+            <button id="detailsToggle" class="details-toggle" type="button" aria-expanded="false" aria-controls="hudDetailsPanel">Details</button>
+            <div id="hudDetailsPanel" class="hud-details-panel" hidden>
+              <div id="gameSnapshot" class="game-snapshot" aria-live="polite">
+                <div class="snapshot-row">
+                  <span class="snapshot-label muted">Opening</span>
+                  <span class="snapshot-value" id="snapshotOpening">Unknown</span>
+                </div>
+                <div class="snapshot-row">
+                  <span class="snapshot-label muted">Ply count</span>
+                  <span class="snapshot-value" id="snapshotPly">0 ply · move 0</span>
+                </div>
+                <div class="snapshot-row">
+                  <span class="snapshot-label muted">Last move</span>
+                  <span class="snapshot-value" id="snapshotLastMove">—</span>
+                </div>
+                <div class="snapshot-row">
+                  <span class="snapshot-label muted">Status</span>
+                  <span class="snapshot-value" id="snapshotStatus">—</span>
+                </div>
+              </div>
+              <div class="notation-controls">
+                <button id="toggleNotation" type="button">Show notation</button>
+                <span id="notationStatus" class="muted" aria-live="polite"></span>
+              </div>
+              <div id="notationMount"></div>
+            </div>
+          </div>
         </div>
-        <div id="historyNotice" class="banner" role="status" aria-live="polite">
-          <span>Reviewing history — click Live to return before submitting a move.</span>
-        </div>
-        <p class="muted selected-move">
-          Selected move: <code id="movePreview">none</code>
-        </p>
-        <div id="updateBanner" class="banner" role="status" aria-live="polite">
-          <span>New server state available. Refresh to sync.</span>
-          <button id="btnBannerRefresh">Refresh</button>
-        </div>
-        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
       </div>
-    </div>
 
-    <div class="card">
-      <h3>Game State</h3>
-      <div id="gameSnapshot" class="game-snapshot" aria-live="polite">
-        <div class="snapshot-row">
-          <span class="snapshot-label muted">Opening</span>
-          <span class="snapshot-value" id="snapshotOpening">Unknown</span>
-        </div>
-        <div class="snapshot-row">
-          <span class="snapshot-label muted">Ply count</span>
-          <span class="snapshot-value" id="snapshotPly">0 ply · move 0</span>
-        </div>
-        <div class="snapshot-row">
-          <span class="snapshot-label muted">Last move</span>
-          <span class="snapshot-value" id="snapshotLastMove">—</span>
-        </div>
-        <div class="snapshot-row">
-          <span class="snapshot-label muted">Status</span>
-          <span class="snapshot-value" id="snapshotStatus">—</span>
-        </div>
-      </div>
-      <div class="notation-controls">
-        <button id="toggleNotation" type="button">Show notation</button>
-        <span id="notationStatus" class="muted" aria-live="polite"></span>
-      </div>
-      <div id="notationMount"></div>
-      <p class="muted mono" id="debugBox"></p>
-      <p id="scoreLine" class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
-    </div>
+    <p id="scoreLine" class="score-line" aria-live="polite"><?= htmlspecialchars($scoreLineText, ENT_QUOTES, 'UTF-8') ?></p>
     <section id="about" class="about-section" aria-labelledby="about-heading">
       <h2 id="about-heading">About this project</h2>
       <p class="about-lede">This is a small experiment in building things by doing them.</p>
@@ -322,7 +326,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       const statusMsg = document.getElementById('statusMsg');
       const statusSpinner = document.getElementById('statusSpinner');
       const movePreview = document.getElementById('movePreview');
-      const debugBox = document.getElementById('debugBox');
       const errorBox = document.getElementById('errorBox');
       const scoreLineEl = document.getElementById('scoreLine');
       const scoreboardEl = document.getElementById('scoreboard');
@@ -333,7 +336,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       const visitorColorLabel = document.getElementById('visitorColorLabel');
       const hostColorLabel = document.getElementById('hostColorLabel');
       const turnLabel = document.getElementById('turnLabel');
-      const turnLabelSecondary = document.getElementById('turnLabelSecondary');
+      const turnPill = document.getElementById('turnPill');
       const turnstileWidget = document.querySelector('.cf-turnstile');
       const updateBanner = document.getElementById('updateBanner');
       const updateBannerText = updateBanner ? updateBanner.querySelector('span') : null;
@@ -352,6 +355,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       const notationMount = document.getElementById('notationMount');
       const toggleNotationBtn = document.getElementById('toggleNotation');
       const notationStatus = document.getElementById('notationStatus');
+      const detailsToggle = document.getElementById('detailsToggle');
+      const hudDetailsPanel = document.getElementById('hudDetailsPanel');
       const snapshotBlock = document.getElementById('gameSnapshot');
       const snapshotOpeningEl = document.getElementById('snapshotOpening');
       const snapshotPlyEl = document.getElementById('snapshotPly');
@@ -990,11 +995,25 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
-      function formatTimestamp(ts) {
+      function formatHumanTimestamp(ts) {
         const d = new Date(ts);
-        if (Number.isNaN(d.getTime())) return ts || '';
-        const pad = (n) => n.toString().padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        if (Number.isNaN(d.getTime())) return '';
+        return d.toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+      }
+
+      function buildLastMoveText(currentState, fallbackSan = '') {
+        if (!currentState) return '—';
+        const tsText = formatHumanTimestamp(currentState.updated_at);
+        const san = (currentState.last_move_san || fallbackSan || '').trim();
+        if (san && tsText) return `${san} \u2022 ${tsText}`;
+        if (tsText) return tsText;
+        return san || '—';
       }
 
       function normalizeColor(color) {
@@ -1087,11 +1106,18 @@ if (!empty($preloadedGame['visitor_color'])) {
           return;
         }
 
+        const snapshotSans = getSnapshotSans();
+        const lastSan = snapshotSans.length ? snapshotSans[snapshotSans.length - 1] : '';
+        const lastMoveLine = buildLastMoveText(state, lastSan);
+
         if (isVisitorsTurn()) {
-          setStatus(`Your turn (${visitorColor}). Solve CAPTCHA to submit.`, 'ok');
+          setStatus('Your turn. Solve CAPTCHA to submit.', 'ok');
           boardEl.classList.remove('locked');
         } else {
-          setStatus(`Waiting on host move (${hostColor}). Last updated: ${formatTimestamp(state.updated_at)}`, 'muted');
+          const waitingMsg = lastMoveLine && lastMoveLine !== '—'
+            ? `Waiting on host move. Last move: ${lastMoveLine}`
+            : 'Waiting on host move.';
+          setStatus(waitingMsg, 'muted');
           boardEl.classList.add('locked');
         }
       }
@@ -1203,17 +1229,19 @@ if (!empty($preloadedGame['visitor_color'])) {
         const lookupId = ++openingLookupToken;
         const context = buildSnapshotContext();
         const lastMove = context.verboseMoves[context.verboseMoves.length - 1] || null;
+        const lastMoveSan = lastMove
+          ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
+          : '';
+        const lastMoveLine = buildLastMoveText(state, lastMoveSan);
         if (snapshotPlyEl) {
           snapshotPlyEl.textContent = formatMoveCount(context.plyCount);
         }
         if (snapshotLastMoveEl) {
-          snapshotLastMoveEl.textContent = lastMove
-            ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
-            : '—';
+          snapshotLastMoveEl.textContent = lastMoveLine || '—';
         }
         if (snapshotStatusEl) {
           const toMove = context.chess.turn() === 'w' ? 'White' : 'Black';
-          const statusBits = [`${toMove} to move`];
+          const statusBits = [state?.status || 'active', `${toMove} to move`];
           if (context.chess.in_check()) {
             statusBits.push('check');
           }
@@ -1294,7 +1322,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         } catch (err) {
           const message = err && err.message ? err.message : String(err);
           historyStatus.textContent = `History unavailable: ${message}`;
-          historyStatus.className = 'error';
+          historyStatus.className = 'history-chip error';
           console.error('History reconstruction failed', err);
           historyState = null;
           updateViewState({ mode: 'live', selectedPly: 0, latestPly: 0 });
@@ -1311,6 +1339,10 @@ if (!empty($preloadedGame['visitor_color'])) {
           if (btnLive) btnLive.disabled = true;
           resetHistoryNotice();
           boardEl.classList.remove('history-locked');
+          if (historyStatus) {
+            historyStatus.textContent = 'Live';
+            historyStatus.className = 'history-chip muted';
+          }
           return;
         }
         const selectedIdx = getSelectedHistoryIndex();
@@ -1323,7 +1355,9 @@ if (!empty($preloadedGame['visitor_color'])) {
           ? (isLive ? 'Live' : `Move ${selectedIdx} of ${h.timeline.length - 1}`)
           : 'Live';
         historyStatus.textContent = statusText;
-        historyStatus.className = isLive ? 'muted' : 'ok';
+        historyStatus.className = 'history-chip';
+        historyStatus.classList.toggle('muted', isLive);
+        historyStatus.classList.toggle('ok', !isLive);
         if (historyNotice) {
           historyNotice.classList.toggle('show', !isLive);
         }
@@ -1354,7 +1388,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           game.load(targetFen);
         } catch (err) {
           historyStatus.textContent = `History unavailable: ${err && err.message ? err.message : err}`;
-          historyStatus.className = 'error';
+          historyStatus.className = 'history-chip error';
           console.error('History load failed', err);
           historyState = null;
           boardEl.classList.remove('history-locked');
@@ -1488,6 +1522,12 @@ if (!empty($preloadedGame['visitor_color'])) {
         notationStatus.textContent = 'Notation hidden';
       }
 
+      function setDetailsVisibility(show) {
+        if (!hudDetailsPanel || !detailsToggle) return;
+        hudDetailsPanel.hidden = !show;
+        detailsToggle.setAttribute('aria-expanded', show ? 'true' : 'false');
+      }
+
       function applyStateData(newState, { resetSelection = true } = {}) {
         const canonicalState = stateStore.set(newState);
         latestFetchedStateFingerprint = stateFingerprint(canonicalState);
@@ -1501,9 +1541,11 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = hostColor;
-        turnLabel.textContent = canonicalState.turn_color;
-        if (turnLabelSecondary) {
-          turnLabelSecondary.textContent = canonicalState.turn_color;
+        const normalizedTurn = normalizeColor(canonicalState.turn_color);
+        const prettyTurn = normalizedTurn ? `${normalizedTurn.charAt(0).toUpperCase()}${normalizedTurn.slice(1)}` : '';
+        turnLabel.textContent = prettyTurn || normalizedTurn;
+        if (turnPill) {
+          turnPill.setAttribute('data-turn', normalizedTurn);
         }
 
         setNotationData({ fen: canonicalState.fen, pgn: canonicalState.pgn });
@@ -1534,7 +1576,9 @@ if (!empty($preloadedGame['visitor_color'])) {
           winner: detected.winner || null,
         });
 
-        debugBox.textContent = `game_id=${canonicalState.id} status=${canonicalState.status} updated_at=${canonicalState.updated_at}`;
+        if (document && document.body) {
+          document.body.dataset.gameId = canonicalState.id || '';
+        }
         if (shouldRenderPosition) {
           renderBoard();
         }
@@ -1814,6 +1858,18 @@ if (!empty($preloadedGame['visitor_color'])) {
             hideNotation();
           } else {
             showNotation();
+          }
+        });
+      }
+
+      if (detailsToggle && hudDetailsPanel) {
+        setDetailsVisibility(false);
+        detailsToggle.addEventListener('click', () => {
+          const nextState = hudDetailsPanel.hidden;
+          setDetailsVisibility(nextState);
+          if (nextState) {
+            const behavior = (prefersReducedMotion && prefersReducedMotion.matches) ? 'auto' : 'smooth';
+            hudDetailsPanel.scrollIntoView({ block: 'nearest', behavior });
           }
         });
       }
