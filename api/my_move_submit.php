@@ -43,6 +43,57 @@ if (!is_array($data)) {
     $data = [];
 }
 
+function resend_throttle_path(): string
+{
+    return __DIR__ . '/../data/resend_throttle.json';
+}
+
+function enforce_resend_cooldown(int $gameId, int $cooldownSeconds = 60): array
+{
+    $path = resend_throttle_path();
+    $dir = dirname($path);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    $fp = @fopen($path, 'c+');
+    if ($fp === false) {
+        return ['ok' => true];
+    }
+
+    $now = time();
+    $data = [];
+
+    if (flock($fp, LOCK_EX)) {
+        $raw = stream_get_contents($fp);
+        if ($raw !== false && strlen($raw) > 0) {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded)) {
+                $data = $decoded;
+            }
+        }
+
+        $key = (string)$gameId;
+        $lastTs = isset($data[$key]['ts']) ? (int)$data[$key]['ts'] : 0;
+        $elapsed = $lastTs > 0 ? ($now - $lastTs) : $cooldownSeconds + 1;
+        if ($elapsed < $cooldownSeconds) {
+            $remaining = max(1, $cooldownSeconds - $elapsed);
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return ['ok' => false, 'remaining' => $remaining];
+        }
+
+        $data[$key] = ['ts' => $now];
+        rewind($fp);
+        ftruncate($fp, 0);
+        fwrite($fp, json_encode($data));
+        flock($fp, LOCK_UN);
+    }
+
+    fclose($fp);
+    return ['ok' => true];
+}
+
 $action = strtolower(clean_string($data['action'] ?? 'submit', 16)) ?: 'submit';
 $tokenValue = clean_string($data['token'] ?? '', 256);
 $from = clean_square($data['from'] ?? '');
@@ -103,6 +154,20 @@ try {
             respond_json(400, ['ok' => false, 'error' => 'No active host turn available.', 'code' => 'host_turn_missing']);
         }
 
+        $cooldown = enforce_resend_cooldown((int)$game['id'], 60);
+        if (($cooldown['ok'] ?? false) !== true) {
+            $db->rollBack();
+            $remaining = isset($cooldown['remaining']) ? (int)$cooldown['remaining'] : 60;
+            $message = sprintf('Please wait %ds before requesting another link.', $remaining);
+            respond_json(429, [
+                'ok' => false,
+                'error' => $message,
+                'message' => $message,
+                'remaining_seconds' => $remaining,
+                'code' => 'resend_cooldown',
+            ]);
+        }
+
         $expiry = default_host_token_expiry();
         $freshToken = insert_host_move_token($db, (int)$game['id'], $expiry);
 
@@ -121,7 +186,8 @@ try {
             $response['error'] = $emailResult['warning'] ?? 'Failed to send email.';
         }
 
-        respond_json(200, $response);
+        $statusCode = ($emailResult['ok'] ?? false) === true ? 200 : 500;
+        respond_json($statusCode, $response);
     }
 
     $db->beginTransaction();

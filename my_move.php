@@ -249,6 +249,11 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
   </script>
   <script>
     (() => {
+      // Test protocol (promotion refresh safety):
+      // 1) Start a promotion move and leave the chooser open.
+      // 2) Click Refresh to pull new server state.
+      // 3) Chooser closes, selection clears, and status shows “Game updated while choosing promotion; please retry.”
+
       const boardIdMap = (window.BoardIdMap && typeof window.BoardIdMap.createBoardIdMap === 'function')
         ? window.BoardIdMap.createBoardIdMap()
         : null;
@@ -316,6 +321,8 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       let pendingBaseFen = null;
       let lastUpdatedTs = null;
       let stateLoadPromise = null;
+      let selectionStateFingerprint = null;
+      let latestFetchedStateFingerprint = null;
       let promotionChoice = 'q';
       let promotionPending = false;
       let promotionColor = null;
@@ -341,6 +348,23 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
         if (statusSpinner) {
           statusSpinner.classList.toggle('show', showSpinner);
         }
+      }
+
+      function stateFingerprint(obj) {
+        if (!obj) return null;
+        return [
+          obj.updated_at ?? '',
+          obj.fen ?? '',
+          obj.turn_color ?? '',
+          (obj.pgn || '').length
+        ].join('|');
+      }
+
+      function handlePromotionInterrupted(newFingerprint) {
+        if (!selectionStateFingerprint || !newFingerprint) return;
+        if (selectionStateFingerprint === newFingerprint) return;
+        clearSelection({ restore: true });
+        setStatus('Game updated while choosing promotion; please retry.', 'muted');
       }
 
       function renderScoreLine(scoreData, fallbackLine = '') {
@@ -478,6 +502,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
         selectedSquare = null;
         pendingMove = null;
         pendingBaseFen = null;
+        selectionStateFingerprint = null;
         movePreview.textContent = 'none';
         btnSubmit.disabled = true;
         resetPromotionChooser();
@@ -739,6 +764,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
           promotionPending = false;
           promotionColor = null;
         }
+        selectionStateFingerprint = latestFetchedStateFingerprint || stateFingerprint(state);
         movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
         btnSubmit.disabled = false;
         selectedSquare = null;
@@ -983,6 +1009,8 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
             if (DEBUG) console.log('fetchState payload', json);
 
             state = json;
+            latestFetchedStateFingerprint = stateFingerprint(state);
+            handlePromotionInterrupted(latestFetchedStateFingerprint);
 
             visitorColor = state.visitor_color;
             youColor = state.you_color;
@@ -1117,6 +1145,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
 
           const successMessage = json.message || 'Move accepted. Visitors may move now.';
           pendingBaseFen = null;
+          selectionStateFingerprint = null;
           resetPromotionChooser();
           enterCompletionState(successMessage);
         } catch (err) {
@@ -1157,6 +1186,13 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
             body: JSON.stringify({ action: 'resend', token: hostToken }),
           });
           const json = await res.json();
+          if (res.status === 429) {
+            const remaining = typeof json.remaining_seconds === 'number' ? json.remaining_seconds : null;
+            const msg = json.message || 'Please wait before resending.';
+            statusEl.textContent = remaining ? `${msg} (${remaining}s)` : msg;
+            statusEl.className = 'error';
+            return;
+          }
           if (!res.ok || json.error || (json.ok === false)) {
             const errMsg = json.error || json.message || 'Failed.';
             throw new Error(errMsg);

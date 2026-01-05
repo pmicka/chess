@@ -239,6 +239,11 @@ if (!empty($preloadedGame['visitor_color'])) {
   <script src="assets/chess.min.js"></script>
   <script>
     (() => {
+      // Test protocol (promotion refresh safety):
+      // 1) Make a promotion-eligible move and leave the chooser open.
+      // 2) Trigger a server refresh (wait for poll or click Refresh).
+      // 3) Chooser closes, selection clears, and status reads “Game updated while choosing promotion; please retry.”
+
       const parseAppConfig = () => {
         const el = document.getElementById('appConfig');
         if (!el) return {};
@@ -273,6 +278,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       const turnLabel = document.getElementById('turnLabel');
       const turnstileWidget = document.querySelector('.cf-turnstile');
       const updateBanner = document.getElementById('updateBanner');
+      const updateBannerText = updateBanner ? updateBanner.querySelector('span') : null;
       const btnBannerRefresh = document.getElementById('btnBannerRefresh');
       const promotionChooser = document.getElementById('promotionChooser');
       const promotionButtons = Array.from(document.querySelectorAll('.promo-btn'));
@@ -536,6 +542,15 @@ if (!empty($preloadedGame['visitor_color'])) {
         return true;
       }
 
+      function handlePromotionInterrupted(newFingerprint, { queued = false } = {}) {
+        const baseline = selectionStateFingerprint;
+        if (!isPromotionFlowActive() || !baseline || !newFingerprint) return;
+        if (baseline === newFingerprint) return;
+        cancelPromotionFlow({ restore: true });
+        setStatus('Game updated while choosing promotion; please retry.', 'muted');
+        showUpdateBanner(queued ? 'Live game updated. Click Live to return.' : null);
+      }
+
       function clearSelection({ restore = false } = {}) {
         const hadPending = Boolean(pendingBaseFen);
         if (restore && pendingBaseFen) {
@@ -658,10 +673,22 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       function stateFingerprint(obj) {
         if (!obj) return null;
-        return `${obj.updated_at ?? ''}|${obj.fen ?? ''}`;
+        return [
+          obj.updated_at ?? '',
+          obj.fen ?? '',
+          obj.turn_color ?? '',
+          (obj.pgn || '').length
+        ].join('|');
       }
 
-      function showUpdateBanner() {
+      function setUpdateBannerMessage(message) {
+        if (updateBannerText && message) {
+          updateBannerText.textContent = message;
+        }
+      }
+
+      function showUpdateBanner(message = null) {
+        if (message) setUpdateBannerMessage(message);
         updateBanner.classList.add('show');
       }
 
@@ -1272,12 +1299,24 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function handleIncomingState(newState, { resetSelection = true, allowQueue = false } = {}) {
-        latestFetchedStateFingerprint = stateFingerprint(newState);
+        const incomingFingerprint = stateFingerprint(newState);
+        latestFetchedStateFingerprint = incomingFingerprint;
         const currentFingerprint = stateFingerprint(state);
-        const hasChanged = !currentFingerprint || currentFingerprint !== latestFetchedStateFingerprint;
+        const hasChanged = !currentFingerprint || currentFingerprint !== incomingFingerprint;
+
+        handlePromotionInterrupted(incomingFingerprint, { queued: allowQueue });
 
         if (hasChanged) {
           cancelPromotionFlow();
+        }
+
+        if (hasChanged && allowQueue && historyState && !isHistoryLiveView()) {
+          queuedServerState = newState;
+          selectionIsStale = true;
+          setStatus('Live game updated. Click Live to return.', 'muted');
+          btnSubmit.disabled = true;
+          showUpdateBanner('Live game updated. Click Live to return.');
+          return;
         }
 
         if (pendingMove && hasChanged && allowQueue) {
@@ -1285,7 +1324,10 @@ if (!empty($preloadedGame['visitor_color'])) {
           selectionIsStale = true;
           setStatus('New server state available. Refresh to sync.', 'muted');
           btnSubmit.disabled = true;
-          showUpdateBanner();
+          const bannerMsg = historyState && !isHistoryLiveView()
+            ? 'Live game updated. Click Live to return.'
+            : 'New server state available. Refresh to sync.';
+          showUpdateBanner(bannerMsg);
           return;
         }
 
@@ -1323,7 +1365,10 @@ if (!empty($preloadedGame['visitor_color'])) {
         }, 20000);
       }
 
-      function applyQueuedStateOrFetch() {
+      function applyQueuedStateOrFetch({ forceLive = false } = {}) {
+        if (forceLive) {
+          updateViewState({ mode: 'live' });
+        }
         cancelPromotionFlow();
         if (queuedServerState) {
           applyStateData(queuedServerState, { resetSelection: true });
@@ -1373,6 +1418,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
       if (btnLive) {
         btnLive.addEventListener('click', () => {
+          applyQueuedStateOrFetch({ forceLive: true });
           const h = historyState;
           const next = h ? h.liveIndex : 0;
           applyHistoryPosition(next, { forceRender: true, mode: 'live' });

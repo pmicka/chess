@@ -886,9 +886,13 @@ function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface
     $tokenSuffix = token_suffix($hostToken);
 
     try {
-        $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
-        if ($mailSent === false) {
-            $warning = 'Email failed';
+        if (!function_exists('mail')) {
+            $warning = 'mail() unavailable';
+        } else {
+            $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
+            if ($mailSent === false) {
+                $warning = 'Email failed';
+            }
         }
     } catch (Throwable $mailErr) {
         $warning = 'Email failed';
@@ -901,6 +905,12 @@ function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface
     ]);
 
     if ($warning !== null) {
+        error_log(sprintf(
+            'email_host_turn_failed game_id=%d token_suffix=%s reason=%s',
+            $gameId,
+            $tokenSuffix,
+            $warning
+        ));
         $logLine = sprintf(
             "[%s] Failed to send host turn email for game_id=%d\n",
             datetime_utc()->format('Y-m-d H:i:s'),

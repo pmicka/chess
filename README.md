@@ -55,7 +55,7 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 
 ## Operational notes
 - **Health check:** `GET /api/health.php` verifies DB path existence/writability and whether `TURNSTILE_SECRET_KEY` is loaded.
-- **Admin reset:** `POST /api/admin_reset.php` with `X-Admin-Key: <ADMIN_RESET_KEY>` resets the active game to the starting position, deletes outstanding tokens/locks, and returns a fresh `host_token`.
+- **Admin reset:** `POST /api/admin_reset.php` with `X-Admin-Key: <ADMIN_RESET_KEY>` resets the active game to the starting position, deletes outstanding tokens/locks, and returns a fresh `host_token`. On DreamHost/shared hosting you can set `ADMIN_RESET_KEY` as a panel-level environment variable or inside `config.local.php`; clients may send it via the `X-Admin-Key` header or an `admin_key` POST body field.
 - **Host next game:** After a finished game, `POST /api/host_next_game.php` with JSON `{"token":"<host_token>"}` to flip colors, record the result, and start the next game.
 - **Host move submissions:** Host links are single-use tokens emailed to `YOUR_EMAIL` by `send_host_turn_email()` (via `mail()`). `/api/my_move_submit.php` accepts host moves and supports an `action` of `resend` to issue a fresh token for the current host turn.
 - **Backups:** Persist `data/chess.sqlite` (game state + tokens), `data/score.json` (win/draw counts), and `config.local.php`. Optional `data/email.log` records failed mail attempts.

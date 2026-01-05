@@ -6,6 +6,16 @@
 header('X-Robots-Tag: noindex');
 header('Content-Type: application/json');
 
+function health_meta(): array
+{
+    return [
+        'turnstile_secret_loaded' => defined('TURNSTILE_SECRET_KEY') && TURNSTILE_SECRET_KEY !== '',
+        'turnstile_site_key_present' => defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY !== '',
+        'mail_available' => function_exists('mail'),
+        'mail_from_present' => defined('MAIL_FROM') && MAIL_FROM !== '',
+    ];
+}
+
 function respond(int $status, array $payload): void
 {
     http_response_code($status);
@@ -16,7 +26,7 @@ function respond(int $status, array $payload): void
 try {
     require_once __DIR__ . '/../db.php';
 } catch (Throwable $e) {
-    respond(503, ['ok' => false, 'reason' => $e->getMessage(), 'code' => 'config_load']);
+    respond(503, ['ok' => false, 'reason' => $e->getMessage(), 'code' => 'config_load'] + health_meta());
 }
 
 log_db_path_info('health');
@@ -37,6 +47,9 @@ try {
             'file_exists' => $pathInfo['exists'] ?? false,
         ],
         'turnstile_secret_loaded' => defined('TURNSTILE_SECRET_KEY') && TURNSTILE_SECRET_KEY !== '',
+        'turnstile_site_key_present' => defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY !== '',
+        'mail_available' => function_exists('mail'),
+        'mail_from_present' => defined('MAIL_FROM') && MAIL_FROM !== '',
     ]);
 }
 
@@ -53,6 +66,9 @@ if (empty($pathInfo['exists'])) {
             'file_exists' => $pathInfo['exists'] ?? false,
         ],
         'turnstile_secret_loaded' => defined('TURNSTILE_SECRET_KEY') && TURNSTILE_SECRET_KEY !== '',
+        'turnstile_site_key_present' => defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY !== '',
+        'mail_available' => function_exists('mail'),
+        'mail_from_present' => defined('MAIL_FROM') && MAIL_FROM !== '',
     ]);
 }
 
@@ -71,6 +87,9 @@ try {
             'file_exists' => $pathInfo['exists'] ?? false,
         ],
         'turnstile_secret_loaded' => defined('TURNSTILE_SECRET_KEY') && TURNSTILE_SECRET_KEY !== '',
+        'turnstile_site_key_present' => defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY !== '',
+        'mail_available' => function_exists('mail'),
+        'mail_from_present' => defined('MAIL_FROM') && MAIL_FROM !== '',
     ]);
 } catch (Throwable $e) {
     respond(503, [
@@ -84,6 +103,9 @@ try {
             'file_exists' => $pathInfo['exists'] ?? false,
         ],
         'turnstile_secret_loaded' => defined('TURNSTILE_SECRET_KEY') && TURNSTILE_SECRET_KEY !== '',
+        'turnstile_site_key_present' => defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY !== '',
+        'mail_available' => function_exists('mail'),
+        'mail_from_present' => defined('MAIL_FROM') && MAIL_FROM !== '',
     ]);
 }
 
@@ -97,4 +119,7 @@ respond(200, [
     ],
     'db_connect' => true,
     'turnstile_secret_loaded' => defined('TURNSTILE_SECRET_KEY') && TURNSTILE_SECRET_KEY !== '',
+    'turnstile_site_key_present' => defined('TURNSTILE_SITE_KEY') && TURNSTILE_SITE_KEY !== '',
+    'mail_available' => function_exists('mail'),
+    'mail_from_present' => defined('MAIL_FROM') && MAIL_FROM !== '',
 ]);
