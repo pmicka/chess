@@ -314,6 +314,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       };
 
       const appConfig = parseAppConfig();
+      const DEBUG = Boolean(appConfig && appConfig.debug);
       const boardIdMap = (window.BoardIdMap && typeof window.BoardIdMap.createBoardIdMap === 'function')
         ? window.BoardIdMap.createBoardIdMap()
         : null;
@@ -1128,10 +1129,12 @@ if (!empty($preloadedGame['visitor_color'])) {
         if (currentState.last_move_from && currentState.last_move_to) {
           return { from: currentState.last_move_from, to: currentState.last_move_to };
         }
-        if (!currentState.pgn) return null;
+        const normalizedPgn = normalizeMovetext(currentState.pgn);
+        if (!normalizedPgn) return null;
         try {
           const replay = new Chess();
-          replay.load_pgn(currentState.pgn);
+          const loaded = replay.load_pgn(normalizedPgn);
+          if (!loaded) return null;
           const hist = replay.history({ verbose: true });
           if (!hist.length) return null;
           const last = hist[hist.length - 1];
@@ -1142,9 +1145,10 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function parseSansFromPgn(pgnText) {
-        if (!pgnText || !pgnText.trim()) return [];
+        const normalized = normalizeMovetext(pgnText);
+        if (!normalized) return [];
         const parser = new Chess();
-        const loaded = parser.load_pgn(pgnText, { sloppy: true });
+        const loaded = parser.load_pgn(normalized, { sloppy: true });
         if (!loaded) return [];
         return parser.history();
       }
@@ -1159,6 +1163,106 @@ if (!empty($preloadedGame['visitor_color'])) {
       function movesToUciString(verboseHistory) {
         if (!Array.isArray(verboseHistory) || !verboseHistory.length) return '';
         return verboseHistory.map((m) => `${m.from}${m.to}${m.promotion || ''}`).join(' ').trim();
+      }
+
+      const PLY_NUMBERED_PATTERN = /\b\d+\.\.\./;
+
+      function isPlyNumberedPgn(text) {
+        return PLY_NUMBERED_PATTERN.test(text || '');
+      }
+
+      function buildPgnFromSansMoves(sansMoves) {
+        if (!Array.isArray(sansMoves) || sansMoves.length === 0) return '';
+        const parts = [];
+        sansMoves.forEach((san, idx) => {
+          const moveNo = Math.floor(idx / 2) + 1;
+          if (idx % 2 === 0) {
+            parts.push(`${moveNo}. ${san}`);
+          } else {
+            parts.push(san);
+          }
+        });
+        return parts.join(' ').trim();
+      }
+
+      function normalizePlyNumberedPGN(text) {
+        const tokens = (text || '').trim().split(/\s+/).filter(Boolean);
+        if (!tokens.length) return '';
+
+        const entries = [];
+        for (let i = 0; i < tokens.length; i += 1) {
+          const match = tokens[i].match(/^(\d+)\.(\.\.)?$/);
+          if (!match) continue;
+          const san = tokens[i + 1];
+          if (!san) break;
+          entries.push({
+            num: parseInt(match[1], 10),
+            color: match[2] ? 'b' : 'w',
+            san,
+          });
+          i += 1; // skip SAN token
+        }
+
+        if (!entries.length) return text.trim();
+
+        const needsRenumber = entries.some((entry, idx) => entry.num !== Math.floor(idx / 2) + 1);
+        const moveMap = new Map();
+
+        entries.forEach((entry, idx) => {
+          const moveNum = needsRenumber ? (Math.floor(idx / 2) + 1) : entry.num;
+          if (!moveMap.has(moveNum)) {
+            moveMap.set(moveNum, { white: null, black: null });
+          }
+          const slot = moveMap.get(moveNum);
+          if (entry.color === 'b') {
+            if (!slot.black) slot.black = entry.san;
+          } else if (!slot.white) {
+            slot.white = entry.san;
+          }
+        });
+
+        const orderedNumbers = Array.from(moveMap.keys()).sort((a, b) => a - b);
+        const parts = [];
+        orderedNumbers.forEach((num) => {
+          const slot = moveMap.get(num);
+          if (!slot) return;
+          if (slot.white) {
+            parts.push(`${num}. ${slot.white}${slot.black ? ` ${slot.black}` : ''}`);
+          } else if (slot.black) {
+            parts.push(`${num}... ${slot.black}`);
+          }
+        });
+
+        return parts.join(' ').trim();
+      }
+
+      function normalizeMovetext(pgnText) {
+        const trimmed = (pgnText || '').trim();
+        if (!trimmed) return '';
+        if (isPlyNumberedPgn(trimmed)) {
+          const normalized = normalizePlyNumberedPGN(trimmed);
+          if (normalized) return normalized;
+        }
+        return trimmed;
+      }
+
+      function deriveDisplayPgn(rawPgn, sansMoves) {
+        if (Array.isArray(sansMoves) && sansMoves.length) {
+          const rendered = buildPgnFromSansMoves(sansMoves);
+          return normalizeMovetext(rendered);
+        }
+        return normalizeMovetext(rawPgn || '');
+      }
+
+      if (DEBUG) {
+        const shortBroken = '1. e4 2... e5 2. Nc3 3... Nc6';
+        const shortNormalized = normalizePlyNumberedPGN(shortBroken);
+        console.assert(shortNormalized === '1. e4 e5 2. Nc3 Nc6', `Short PGN normalization failed: ${shortNormalized}`);
+
+        const fullBroken = '1. e4 2... e5 2. Nc3 3... Nc6 3. Nd5 4... Nf6 4. Nxf6+ 5... Qxf6 5. Nf3 6... Bc5 6. c3 7... O-O 7. d4 8... exd4 8. Bg5 9... Qg6 9. cxd4 10... Qxe4+ 10. Be2 11... Nxd4 11. Nxd4 12... Bxd4 12. O-O 13... Bxb2 13. Rb1 14... Be5 14. Bf3 15... Qf5 15. Be3 16... d6 16. Bxb7 17... Bxb7 17. Rxb7 18... Qc8 18. Rxa7 19... Rxa7 19. Bxa7 20... c5 20. f4 21... Bd4+ 21. Kh1 22... Qa6 22. h3 23... Qxa7 23. Qb3 24... Rb8 24. Qd5 25... Ra8 25. Qxd6 26... Qxa2 26. Qc6 27... c4 27. g4 28... c3 28. f5 29... c2 29. f6 30. Bxf6 30... Bxf6 30. C1c1';
+        const fullNormalized = normalizePlyNumberedPGN(fullBroken);
+        console.assert(fullNormalized.includes('1. e4 e5'), 'Full PGN should contain a normalized first reply');
+        console.assert(!/\b2\.\.\.\s*e5\b/.test(fullNormalized), 'Full PGN should not retain ply-numbered black reply');
       }
 
       function buildSnapshotContext() {
@@ -1268,11 +1372,11 @@ if (!empty($preloadedGame['visitor_color'])) {
         const seed = startFen ? new Chess(startFen) : new Chess();
         const timeline = [seed.fen()];
         const historySans = [];
-        const trimmed = (movesPgn || '').trim();
-        if (!trimmed) return { timeline, historySans };
+        const normalized = normalizeMovetext(movesPgn);
+        if (!normalized) return { timeline, historySans, normalizedPgn: '' };
 
         const parser = startFen ? new Chess(startFen) : new Chess();
-        const loaded = parser.load_pgn(trimmed, { sloppy: true });
+        const loaded = parser.load_pgn(normalized, { sloppy: true });
         if (!loaded) {
           throw new Error('Invalid PGN');
         }
@@ -1285,7 +1389,8 @@ if (!empty($preloadedGame['visitor_color'])) {
           }
           timeline.push(replay.fen());
         });
-        return { timeline, historySans };
+        const normalizedPgn = buildPgnFromSansMoves(historySans) || normalized;
+        return { timeline, historySans, normalizedPgn };
       }
 
       function resetHistoryNotice() {
@@ -1298,6 +1403,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           ? currentState.pgn
           : '';
         const fallbackFen = (currentState && currentState.fen) ? currentState.fen : null;
+        const fallbackPgn = normalizeMovetext(movesPgn);
         try {
           const historyBundle = buildHistoryTimeline(initialFen, movesPgn);
           const timeline = historyBundle?.timeline || [];
@@ -1314,12 +1420,17 @@ if (!empty($preloadedGame['visitor_color'])) {
           historyState = {
             timeline,
             historySans: sans,
+            normalizedPgn: historyBundle?.normalizedPgn || fallbackPgn,
             liveIndex,
             idx: getSelectedHistoryIndex(),
             get isLive() { return isHistoryLiveView(); },
           };
           updateHistoryUI();
-          return timeline[getSelectedHistoryIndex()] || fallbackFen;
+          const fenForSelection = timeline[getSelectedHistoryIndex()] || fallbackFen;
+          return {
+            fen: fenForSelection,
+            normalizedPgn: historyBundle?.normalizedPgn || fallbackPgn,
+          };
         } catch (err) {
           const message = err && err.message ? err.message : String(err);
           historyStatus.textContent = `History unavailable: ${message}`;
@@ -1328,7 +1439,10 @@ if (!empty($preloadedGame['visitor_color'])) {
           historyState = null;
           updateViewState({ mode: 'live', selectedPly: 0, latestPly: 0 });
           resetHistoryNotice();
-          return fallbackFen;
+          return {
+            fen: fallbackFen,
+            normalizedPgn: fallbackPgn,
+          };
         }
       }
 
@@ -1562,9 +1676,12 @@ if (!empty($preloadedGame['visitor_color'])) {
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = hostColor;
 
-        setNotationData({ fen: canonicalState.fen, pgn: canonicalState.pgn });
+        const historyResult = syncHistoryFromState(canonicalState) || {};
+        const fenFromHistory = historyResult.fen || null;
+        const normalizedPgnForDisplay = historyResult.normalizedPgn
+          || deriveDisplayPgn(canonicalState.pgn, parseSansFromPgn(canonicalState.pgn));
+        setNotationData({ fen: canonicalState.fen, pgn: normalizedPgnForDisplay });
 
-        const fenFromHistory = syncHistoryFromState(canonicalState);
         const selectedIdx = getSelectedHistoryIndex();
         const fenToLoad = (historyState && Array.isArray(historyState.timeline) && historyState.timeline[selectedIdx])
           ? historyState.timeline[selectedIdx]
