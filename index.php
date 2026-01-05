@@ -229,6 +229,24 @@ if (!empty($preloadedGame['visitor_color'])) {
 
     <div class="card">
       <h3>Game State</h3>
+      <div id="gameSnapshot" class="game-snapshot" aria-live="polite">
+        <div class="snapshot-row">
+          <span class="snapshot-label muted">Opening</span>
+          <span class="snapshot-value" id="snapshotOpening">Unknown</span>
+        </div>
+        <div class="snapshot-row">
+          <span class="snapshot-label muted">Ply count</span>
+          <span class="snapshot-value" id="snapshotPly">0 ply · move 0</span>
+        </div>
+        <div class="snapshot-row">
+          <span class="snapshot-label muted">Last move</span>
+          <span class="snapshot-value" id="snapshotLastMove">—</span>
+        </div>
+        <div class="snapshot-row">
+          <span class="snapshot-label muted">Status</span>
+          <span class="snapshot-value" id="snapshotStatus">—</span>
+        </div>
+      </div>
       <div class="notation-controls">
         <button id="toggleNotation" type="button">Show notation</button>
         <span id="notationStatus" class="muted" aria-live="polite"></span>
@@ -334,6 +352,11 @@ if (!empty($preloadedGame['visitor_color'])) {
       const notationMount = document.getElementById('notationMount');
       const toggleNotationBtn = document.getElementById('toggleNotation');
       const notationStatus = document.getElementById('notationStatus');
+      const snapshotBlock = document.getElementById('gameSnapshot');
+      const snapshotOpeningEl = document.getElementById('snapshotOpening');
+      const snapshotPlyEl = document.getElementById('snapshotPly');
+      const snapshotLastMoveEl = document.getElementById('snapshotLastMove');
+      const snapshotStatusEl = document.getElementById('snapshotStatus');
       const backToTopBtn = document.getElementById('backToTopButton');
       const prefersReducedMotion = (typeof window !== 'undefined' && window.matchMedia)
         ? window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -373,6 +396,42 @@ if (!empty($preloadedGame['visitor_color'])) {
       let historyState = null;
       let viewState = { mode: 'live', selectedPly: 0, latestPly: 0 };
       let turnstileToken = null;
+      let ecoLoadPrimed = false;
+      let openingLookupToken = 0;
+      const ecoLiteStore = {
+        started: false,
+        data: null,
+        promise: null,
+        load() {
+          if (this.started) return this.promise;
+          this.started = true;
+          this.promise = fetch('assets/data/eco_lite.json', { cache: 'no-store' })
+            .then((res) => {
+              if (!res.ok) throw new Error('Failed to load ECO data');
+              return res.json();
+            })
+            .then((json) => {
+              this.data = Array.isArray(json) ? json : [];
+              return this.data;
+            })
+            .catch((err) => {
+              console.error('ECO lite load failed', err);
+              this.data = null;
+              throw err;
+            });
+          return this.promise;
+        },
+        async getData() {
+          if (!this.data && ecoLoadPrimed) {
+            try {
+              await this.load();
+            } catch (err) {
+              return null;
+            }
+          }
+          return this.data;
+        },
+      };
 
       const stateStore = {
         current: null,
@@ -1055,19 +1114,140 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
+      function parseSansFromPgn(pgnText) {
+        if (!pgnText || !pgnText.trim()) return [];
+        const parser = new Chess();
+        const loaded = parser.load_pgn(pgnText, { sloppy: true });
+        if (!loaded) return [];
+        return parser.history();
+      }
+
+      function getSnapshotSans() {
+        if (historyState && Array.isArray(historyState.historySans)) {
+          return historyState.historySans;
+        }
+        return parseSansFromPgn(state?.pgn || '');
+      }
+
+      function movesToUciString(verboseHistory) {
+        if (!Array.isArray(verboseHistory) || !verboseHistory.length) return '';
+        return verboseHistory.map((m) => `${m.from}${m.to}${m.promotion || ''}`).join(' ').trim();
+      }
+
+      function buildSnapshotContext() {
+        const snapshot = {
+          chess: new Chess(),
+          verboseMoves: [],
+          sequence: '',
+          plyCount: 0,
+          totalPlies: 0,
+        };
+        const sansMoves = getSnapshotSans();
+        snapshot.totalPlies = sansMoves.length;
+        const targetPly = historyState ? clampSelectedPly(viewState.selectedPly) : sansMoves.length;
+        const limit = Math.max(0, Math.min(targetPly, sansMoves.length));
+        try {
+          const replay = new Chess();
+          for (let i = 0; i < limit; i += 1) {
+            const mv = replay.move(sansMoves[i], { sloppy: true });
+            if (!mv) break;
+          }
+          snapshot.chess = replay;
+          snapshot.verboseMoves = replay.history({ verbose: true }) || [];
+          snapshot.sequence = movesToUciString(snapshot.verboseMoves);
+          snapshot.plyCount = snapshot.verboseMoves.length;
+        } catch (err) {
+          console.error('Snapshot rebuild failed', err);
+          try {
+            if (state?.fen) {
+              snapshot.chess.load(state.fen);
+            }
+          } catch (err2) {
+            // ignore
+          }
+        }
+        return snapshot;
+      }
+
+      async function getOpeningInfo(chessInstance) {
+        if (!chessInstance) return null;
+        const historyVerbose = chessInstance.history({ verbose: true }) || [];
+        if (!historyVerbose.length) return null;
+        const seq = movesToUciString(historyVerbose);
+        if (!seq) return null;
+        const data = await ecoLiteStore.getData();
+        if (!data || !data.length) return null;
+        const current = seq.trim();
+        let best = null;
+        for (const entry of data) {
+          const moves = (entry?.moves || '').trim();
+          if (!moves) continue;
+          if (current === moves || current.startsWith(`${moves} `)) {
+            const plies = moves.split(/\\s+/).length;
+            if (!best || plies > best.matchedPlies) {
+              best = { eco: entry.eco, name: entry.name, matchedPlies: plies };
+            }
+          }
+        }
+        return best;
+      }
+
+      function formatMoveCount(plies) {
+        const num = Number.isFinite(plies) ? Math.max(0, plies) : 0;
+        const moveNum = Math.max(0, Math.ceil(num / 2));
+        return `${num} ply · move ${moveNum}`;
+      }
+
+      async function renderGameSnapshot() {
+        if (!snapshotBlock) return;
+        const lookupId = ++openingLookupToken;
+        const context = buildSnapshotContext();
+        const lastMove = context.verboseMoves[context.verboseMoves.length - 1] || null;
+        if (snapshotPlyEl) {
+          snapshotPlyEl.textContent = formatMoveCount(context.plyCount);
+        }
+        if (snapshotLastMoveEl) {
+          snapshotLastMoveEl.textContent = lastMove
+            ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
+            : '—';
+        }
+        if (snapshotStatusEl) {
+          const toMove = context.chess.turn() === 'w' ? 'White' : 'Black';
+          const statusBits = [`${toMove} to move`];
+          if (context.chess.in_check()) {
+            statusBits.push('check');
+          }
+          snapshotStatusEl.textContent = statusBits.join(' · ');
+        }
+        let openingText = 'Unknown';
+        try {
+          const opening = await getOpeningInfo(context.chess);
+          if (opening) {
+            openingText = `${opening.eco} — ${opening.name}`;
+          }
+        } catch (err) {
+          console.error('Opening lookup failed', err);
+        }
+        if (lookupId !== openingLookupToken) return;
+        if (snapshotOpeningEl) {
+          snapshotOpeningEl.textContent = openingText;
+        }
+      }
+
       function buildHistoryTimeline(initialFen, movesPgn) {
         const startFen = (initialFen && initialFen !== 'start') ? initialFen : null;
         const seed = startFen ? new Chess(startFen) : new Chess();
         const timeline = [seed.fen()];
+        const historySans = [];
         const trimmed = (movesPgn || '').trim();
-        if (!trimmed) return timeline;
+        if (!trimmed) return { timeline, historySans };
 
         const parser = startFen ? new Chess(startFen) : new Chess();
         const loaded = parser.load_pgn(trimmed, { sloppy: true });
         if (!loaded) {
           throw new Error('Invalid PGN');
         }
-        const historySans = parser.history();
+        historySans.push(...parser.history());
         const replay = startFen ? new Chess(startFen) : new Chess();
         historySans.forEach((san, idx) => {
           const move = replay.move(san, { sloppy: true });
@@ -1076,7 +1256,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           }
           timeline.push(replay.fen());
         });
-        return timeline;
+        return { timeline, historySans };
       }
 
       function resetHistoryNotice() {
@@ -1090,7 +1270,9 @@ if (!empty($preloadedGame['visitor_color'])) {
           : '';
         const fallbackFen = (currentState && currentState.fen) ? currentState.fen : null;
         try {
-          const timeline = buildHistoryTimeline(initialFen, movesPgn);
+          const historyBundle = buildHistoryTimeline(initialFen, movesPgn);
+          const timeline = historyBundle?.timeline || [];
+          const sans = historyBundle?.historySans || [];
           const liveIndex = Math.max(0, timeline.length - 1);
           const maxIdx = Math.max(0, timeline.length - 1);
           const desiredIdx = viewState.mode === 'live'
@@ -1102,6 +1284,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           });
           historyState = {
             timeline,
+            historySans: sans,
             liveIndex,
             idx: getSelectedHistoryIndex(),
             get isLive() { return isHistoryLiveView(); },
@@ -1164,6 +1347,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         if (!forceRender && targetFen === game.fen()) {
           updateHistoryUI();
           updateStatusMessage();
+          renderGameSnapshot();
           return;
         }
         try {
@@ -1181,6 +1365,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         renderBoard();
         updateStatusMessage();
         updateHistoryUI();
+        renderGameSnapshot();
       }
 
       function applyHistoryPosition(targetIdx, { forceRender = false, mode = null, allowAutoLive = false } = {}) {
@@ -1367,6 +1552,11 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         updateHistoryUI();
         hideUpdateBanner();
+        if (!ecoLoadPrimed) {
+          ecoLoadPrimed = true;
+          ecoLiteStore.load().catch((err) => console.error('ECO dataset preload failed', err));
+        }
+        renderGameSnapshot();
       }
 
       function handleIncomingState(newState, { resetSelection = true, allowQueue = false } = {}) {
