@@ -561,28 +561,31 @@ function strip_pgn_headers(string $pgn): string
  */
 function append_pgn_move(string $currentPgn, string $movingColor, string $moveSan, string $fenAfterMove): string
 {
+    append_pgn_move_dev_assertion();
+
     $trimmed = trim(strip_pgn_headers($currentPgn));
     $moveSan = trim($moveSan);
     if ($moveSan === '') {
         return $trimmed;
     }
 
-    $moveNumber = fullmove_number_from_fen($fenAfterMove);
     $color = strtolower($movingColor) === 'white' ? 'white' : 'black';
+    $fullmoveNumber = fullmove_number_from_fen($fenAfterMove);
+    $moveNumber = $color === 'white'
+        ? $fullmoveNumber
+        : max(1, $fullmoveNumber - 1);
+
+    $lastNumber = null;
+    if ($trimmed !== '' && preg_match_all('/(\\d+)\\./', $trimmed, $matches) && !empty($matches[1])) {
+        $lastNumber = (int)end($matches[1]);
+    }
 
     if ($color === 'white') {
         $segment = "{$moveNumber}. {$moveSan}";
     } else {
-        $lastNumber = null;
-        if ($trimmed !== '' && preg_match_all('/(\\d+)\\./', $trimmed, $matches) && !empty($matches[1])) {
-            $lastNumber = (int)end($matches[1]);
-        }
-
-        if ($lastNumber === $moveNumber) {
-            $segment = $moveSan;
-        } else {
-            $segment = "{$moveNumber}... {$moveSan}";
-        }
+        $segment = ($lastNumber === $moveNumber)
+            ? $moveSan
+            : "{$moveNumber}. {$moveSan}";
     }
 
     if ($trimmed === '') {
@@ -590,6 +593,25 @@ function append_pgn_move(string $currentPgn, string $movingColor, string $moveSa
     }
 
     return $trimmed . ' ' . $segment;
+}
+
+function append_pgn_move_dev_assertion(): void
+{
+    static $hasRun = false;
+    if ($hasRun || !getenv('DEV_ASSERT_PGN_FORMAT')) {
+        return;
+    }
+    $hasRun = true;
+
+    $pgn = '';
+    $pgn = append_pgn_move($pgn, 'white', 'e4', '8/8/8/8/8/8/8/8 b - - 0 1');
+    $pgn = append_pgn_move($pgn, 'black', 'e5', '8/8/8/8/8/8/8/8 w - - 0 2');
+    $pgn = append_pgn_move($pgn, 'white', 'Nc3', '8/8/8/8/8/8/8/8 b - - 0 2');
+    $pgn = append_pgn_move($pgn, 'black', 'Nc6', '8/8/8/8/8/8/8/8 w - - 0 3');
+
+    if ($pgn !== '1. e4 e5 2. Nc3 Nc6' || strpos($pgn, '...') !== false) {
+        trigger_error(sprintf('append_pgn_move dev assertion failed: "%s"', $pgn), E_USER_WARNING);
+    }
 }
 
 /**
