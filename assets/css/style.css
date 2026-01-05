@@ -585,6 +585,23 @@ button.secondary,
   border-color: var(--border-strong);
 }
 
+.ghost-button {
+  background: var(--glass);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.ghost-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.button-compact {
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .controls {
   display: flex;
   gap: var(--space-12);
@@ -1048,7 +1065,7 @@ textarea {
   padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .hud-details-panel .notation-controls {
@@ -1059,7 +1076,7 @@ textarea {
 }
 
 .hud-details-panel #notationMount {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .game-snapshot {
@@ -1072,6 +1089,83 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.details-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  margin: 2px 0 4px;
+  opacity: 0.7;
+}
+
+.details-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.details-advanced-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+}
+
+.details-advanced-title {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.notation-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notation-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.notation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+}
+
+.notation-label {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.notation-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.notation-readout {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: var(--radius-tight);
+  border: 1px solid var(--border);
+  white-space: pre;
+  overflow-x: auto;
+  margin: 0;
 }
 
 .back-to-top {
