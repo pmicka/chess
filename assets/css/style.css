@@ -935,6 +935,10 @@ textarea {
   margin: 0 0 4px;
 }
 
+#gameOverBody {
+  margin: 0;
+}
+
 .gameover-actions {
   display: flex;
   gap: var(--space-12);
