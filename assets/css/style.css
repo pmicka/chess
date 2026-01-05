@@ -770,8 +770,9 @@ textarea {
   pointer-events: none;
   transform: translateY(6px);
   transition: opacity 140ms ease, transform 140ms ease, background 120ms ease, border-color 120ms ease;
-  z-index: 20;
+  z-index: 60;
   touch-action: manipulation;
+  overflow: visible;
 }
 
 .back-to-top.visible {
@@ -793,9 +794,13 @@ textarea {
 .back-to-top svg {
   width: 16px;
   height: 16px;
+  flex: 0 0 16px;
+  display: block;
   stroke: currentColor;
   fill: none;
-  stroke-width: 1.6;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 @media (min-width: 1024px) {

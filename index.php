@@ -224,7 +224,18 @@ if (!empty($preloadedGame['visitor_color'])) {
   </div>
 
   <button type="button" id="backToTopButton" class="back-to-top" aria-label="Back to top">
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      focusable="false"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
       <path d="M18 15.5 12 9.5 6 15.5" />
     </svg>
   </button>
