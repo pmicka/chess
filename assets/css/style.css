@@ -58,6 +58,7 @@ body::before {
     url("/chess/assets/bg.webp") type("image/webp"),
     url("/chess/assets/bg.jpg") type("image/jpeg")
   );
+  background-attachment: fixed;
   background-size: cover;
   background-position: left center;
   background-repeat: no-repeat;
@@ -568,6 +569,7 @@ button,
   align-items: center;
   justify-content: center;
   gap: 6px;
+  min-height: 40px;
 }
 
 button:hover,
@@ -1203,8 +1205,8 @@ textarea {
   position: fixed;
   right: 18px;
   bottom: 18px;
-  width: 34px;
-  height: 34px;
+  width: 42px;
+  height: 42px;
   border-radius: 50%;
   border: 1px solid var(--border-strong);
   background: var(--glass);
@@ -1293,6 +1295,7 @@ textarea {
     filter: blur(3px) saturate(0.95) contrast(1.02);
     opacity: 0.28;
     position: absolute;
+    background-attachment: scroll;
   }
 
   body::after {

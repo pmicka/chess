@@ -216,7 +216,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           <div id="historyNotice" class="banner" role="status" aria-live="polite">
             <span>Reviewing history — click Live to return before submitting a move.</span>
           </div>
-          <p class="muted selected-move">
+          <p class="muted selected-move" hidden>
             Selected move: <code id="movePreview">none</code>
           </p>
           <div id="updateBanner" class="banner" role="status" aria-live="polite">
@@ -330,6 +330,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       const statusMsg = document.getElementById('statusMsg');
       const statusSpinner = document.getElementById('statusSpinner');
       const movePreview = document.getElementById('movePreview');
+      const selectedMoveRow = document.querySelector('.selected-move');
       const errorBox = document.getElementById('errorBox');
       const scoreLineEl = document.getElementById('scoreLine');
       const scoreboardEl = document.getElementById('scoreboard');
@@ -368,6 +369,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       const prefersReducedMotion = (typeof window !== 'undefined' && window.matchMedia)
         ? window.matchMedia('(prefers-reduced-motion: reduce)')
         : null;
+      const DETAILS_STATE_KEY = 'chess_details_open';
+      const snapshotRenderCache = { opening: null, ply: null, lastMove: null, status: null };
 
       boardEl.classList.add('locked');
 
@@ -405,25 +408,56 @@ if (!empty($preloadedGame['visitor_color'])) {
       let turnstileToken = null;
       let ecoLoadPrimed = false;
       let openingLookupToken = 0;
+      let detailsOpen = false;
       const ecoLiteStore = {
         started: false,
         data: null,
         promise: null,
+        loadFromStorage() {
+          if (typeof localStorage === 'undefined') return null;
+          try {
+            const raw = localStorage.getItem('chess_eco_lite_cache_v1');
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || !Array.isArray(parsed.data)) return null;
+            return parsed.data;
+          } catch (err) {
+            return null;
+          }
+        },
+        persist(data) {
+          if (typeof localStorage === 'undefined') return;
+          try {
+            localStorage.setItem('chess_eco_lite_cache_v1', JSON.stringify({ data }));
+          } catch (err) {
+            // ignore storage failures
+          }
+        },
         load() {
-          if (this.started) return this.promise;
+          if (this.promise) return this.promise;
+          const cached = this.loadFromStorage();
+          if (cached) {
+            this.data = cached;
+            this.promise = Promise.resolve(this.data);
+            this.started = true;
+            return this.promise;
+          }
           this.started = true;
-          this.promise = fetch('assets/data/eco_lite.json', { cache: 'no-store' })
+          this.promise = fetch('assets/data/eco_lite.json', { cache: 'force-cache' })
             .then((res) => {
               if (!res.ok) throw new Error('Failed to load ECO data');
               return res.json();
             })
             .then((json) => {
               this.data = Array.isArray(json) ? json : [];
+              this.persist(this.data);
               return this.data;
             })
             .catch((err) => {
               console.error('ECO lite load failed', err);
               this.data = null;
+              this.promise = null;
+              this.started = false;
               throw err;
             });
           return this.promise;
@@ -449,6 +483,40 @@ if (!empty($preloadedGame['visitor_color'])) {
         },
         get() { return this.current; },
       };
+
+      function updateMovePreviewDisplay(text) {
+        if (movePreview) {
+          movePreview.textContent = text || '';
+        }
+        if (selectedMoveRow) {
+          const hasMove = Boolean(text);
+          selectedMoveRow.hidden = !hasMove;
+          selectedMoveRow.setAttribute('aria-hidden', hasMove ? 'false' : 'true');
+        }
+      }
+
+      function persistDetailsState(open) {
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+          sessionStorage.setItem(DETAILS_STATE_KEY, open ? '1' : '0');
+        } catch (err) {
+          // ignore storage failures
+        }
+      }
+
+      function restoreDetailsState() {
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+          const raw = sessionStorage.getItem(DETAILS_STATE_KEY);
+          if (raw === '1') {
+            detailsOpen = true;
+          } else if (raw === '0') {
+            detailsOpen = false;
+          }
+        } catch (err) {
+          detailsOpen = false;
+        }
+      }
 
       function persistViewState() {
         if (typeof sessionStorage === 'undefined') return;
@@ -516,6 +584,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       restoreViewState();
+      restoreDetailsState();
+      updateMovePreviewDisplay('');
 
       window.onTurnstileSuccess = (token) => { turnstileToken = token; };
       window.onTurnstileExpired = () => { turnstileToken = null; };
@@ -675,7 +745,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         pendingBaseFen = null;
         selectionStateFingerprint = null;
         selectionIsStale = false;
-        movePreview.textContent = 'none';
+        updateMovePreviewDisplay('');
         btnSubmit.disabled = true;
         resetPromotionChooser();
         if (restore && hadPending) {
@@ -766,7 +836,7 @@ if (!empty($preloadedGame['visitor_color'])) {
                 requiresPromotion: true,
               };
               lastMoveSquares = { from: move.from, to: move.to };
-              movePreview.textContent = `${move.san} (${move.from}→${move.to})`;
+              updateMovePreviewDisplay(`${move.san} (${move.from}→${move.to})`);
               btnSubmit.disabled = false;
               renderBoard();
             }
@@ -899,7 +969,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         selectionStateFingerprint = stateFingerprint(state);
         selectionIsStale = false;
         lastMoveSquares = { from: move.from, to: move.to };
-        movePreview.textContent = `${move.san} (${move.from}→${move.to})`;
+        updateMovePreviewDisplay(`${move.san} (${move.from}→${move.to})`);
         btnSubmit.disabled = false;
         selectedSquare = null;
         renderBoard();
@@ -972,7 +1042,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         pendingBaseFen = null;
         selectedSquare = null;
         resetPromotionChooser();
-        movePreview.textContent = 'none';
+        updateMovePreviewDisplay('');
         boardEl.classList.add('locked');
         showErrors([message]);
         try {
@@ -1338,31 +1408,40 @@ if (!empty($preloadedGame['visitor_color'])) {
           ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
           : '';
         const lastMoveLine = buildLastMoveText(state, lastMoveSan);
-        if (snapshotPlyEl) {
-          snapshotPlyEl.textContent = formatMoveCount(context.plyCount);
+        const plyText = formatMoveCount(context.plyCount);
+        if (snapshotPlyEl && snapshotRenderCache.ply !== plyText) {
+          snapshotRenderCache.ply = plyText;
+          snapshotPlyEl.textContent = plyText;
         }
-        if (snapshotLastMoveEl) {
-          snapshotLastMoveEl.textContent = lastMoveLine || '—';
+        const lastMoveText = lastMoveLine || '—';
+        if (snapshotLastMoveEl && snapshotRenderCache.lastMove !== lastMoveText) {
+          snapshotRenderCache.lastMove = lastMoveText;
+          snapshotLastMoveEl.textContent = lastMoveText;
         }
-        if (snapshotStatusEl) {
-          const toMove = context.chess.turn() === 'w' ? 'White' : 'Black';
-          const statusBits = [state?.status || 'active', `${toMove} to move`];
-          if (context.chess.in_check()) {
-            statusBits.push('check');
-          }
-          snapshotStatusEl.textContent = statusBits.join(' · ');
+        const toMove = context.chess.turn() === 'w' ? 'White' : 'Black';
+        const statusBits = [state?.status || 'active', `${toMove} to move`];
+        if (context.chess.in_check()) {
+          statusBits.push('check');
         }
-        let openingText = 'Unknown';
+        const statusText = statusBits.join(' · ');
+        if (snapshotStatusEl && snapshotRenderCache.status !== statusText) {
+          snapshotRenderCache.status = statusText;
+          snapshotStatusEl.textContent = statusText;
+        }
+        let openingText = snapshotRenderCache.opening || 'Unknown';
         try {
           const opening = await getOpeningInfo(context.chess);
           if (opening) {
             openingText = `${opening.eco} — ${opening.name}`;
+          } else if (!snapshotRenderCache.opening) {
+            openingText = 'Unknown';
           }
         } catch (err) {
           console.error('Opening lookup failed', err);
         }
         if (lookupId !== openingLookupToken) return;
-        if (snapshotOpeningEl) {
+        if (snapshotOpeningEl && snapshotRenderCache.opening !== openingText) {
+          snapshotRenderCache.opening = openingText;
           snapshotOpeningEl.textContent = openingText;
         }
       }
@@ -1656,10 +1735,15 @@ if (!empty($preloadedGame['visitor_color'])) {
         notationStatus.textContent = 'Notation hidden';
       }
 
-      function setDetailsVisibility(show) {
+      function setDetailsVisibility(show, { persist = true } = {}) {
         if (!hudDetailsPanel || !detailsToggle) return;
-        hudDetailsPanel.hidden = !show;
-        detailsToggle.setAttribute('aria-expanded', show ? 'true' : 'false');
+        const nextState = Boolean(show);
+        hudDetailsPanel.hidden = !nextState;
+        detailsToggle.setAttribute('aria-expanded', nextState ? 'true' : 'false');
+        detailsOpen = nextState;
+        if (persist) {
+          persistDetailsState(nextState);
+        }
       }
 
       function applyStateData(newState, { resetSelection = true } = {}) {
@@ -1732,6 +1816,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           ecoLiteStore.load().catch((err) => console.error('ECO dataset preload failed', err));
         }
         renderGameSnapshot();
+        setDetailsVisibility(detailsOpen, { persist: false });
       }
 
       function handleIncomingState(newState, { resetSelection = true, allowQueue = false } = {}) {
@@ -1994,7 +2079,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       if (detailsToggle && hudDetailsPanel) {
-        setDetailsVisibility(false);
+        setDetailsVisibility(detailsOpen, { persist: false });
         detailsToggle.addEventListener('click', () => {
           const nextState = hudDetailsPanel.hidden;
           setDetailsVisibility(nextState);

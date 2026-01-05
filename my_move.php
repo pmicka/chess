@@ -214,7 +214,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
           <span id="statusMsg" class="muted"></span>
           <span id="lastUpdated" class="muted">Last updated: ...</span>
         </div>
-        <p class="muted selected-move">
+        <p class="muted selected-move" hidden>
           Selected move: <code id="movePreview">none</code>
         </p>
         <div class="extra-actions">
@@ -281,6 +281,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       const copyStatus = document.getElementById('copyStatus');
       const resendStatus = document.getElementById('resendStatus');
       const movePreview = document.getElementById('movePreview');
+      const selectedMoveRow = document.querySelector('.selected-move');
       const debugBox = document.getElementById('debugBox');
       const lastUpdatedEl = document.getElementById('lastUpdated');
       const hostScoreLine = document.getElementById('hostScoreLine');
@@ -331,6 +332,18 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       let notationVisible = false;
       let notationElements = null;
       let notationData = { fen: '', pgn: '' };
+
+      function updateMovePreviewDisplay(text) {
+        if (movePreview) {
+          movePreview.textContent = text || '';
+        }
+        if (selectedMoveRow) {
+          const hasMove = Boolean(text);
+          selectedMoveRow.hidden = !hasMove;
+          selectedMoveRow.setAttribute('aria-hidden', hasMove ? 'false' : 'true');
+        }
+      }
+      updateMovePreviewDisplay('');
 
       function squareId(logical) {
         return boardIdMap.toOpaque(logical);
@@ -601,7 +614,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
         pendingMove = null;
         pendingBaseFen = null;
         selectionStateFingerprint = null;
-        movePreview.textContent = 'none';
+        updateMovePreviewDisplay('');
         btnSubmit.disabled = true;
         resetPromotionChooser();
         if (restore && hadPending) {
@@ -759,7 +772,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
                 san: move.san,
                 requiresPromotion: true,
               };
-              movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
+              updateMovePreviewDisplay(`${move.san} (${move.from}->${move.to})`);
               btnSubmit.disabled = false;
               renderBoard();
             }
@@ -863,7 +876,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
           promotionColor = null;
         }
         selectionStateFingerprint = latestFetchedStateFingerprint || stateFingerprint(state);
-        movePreview.textContent = `${move.san} (${move.from}->${move.to})`;
+        updateMovePreviewDisplay(`${move.san} (${move.from}->${move.to})`);
         btnSubmit.disabled = false;
         selectedSquare = null;
         renderBoard();
@@ -1184,7 +1197,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
             if (!isAuthError) {
               renderBoard();
               setNotationData({ fen: '', pgn: '' });
-              movePreview.textContent = 'none';
+              updateMovePreviewDisplay('');
               throw err;
             }
             enterExpiredLinkState(friendlyMessage);
