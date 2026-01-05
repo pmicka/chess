@@ -1163,9 +1163,28 @@ textarea {
   padding: 10px 12px;
   border-radius: var(--radius-tight);
   border: 1px solid var(--border);
+  white-space: pre-wrap;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.notation-readout--fen {
   white-space: pre;
   overflow-x: auto;
-  margin: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+  line-height: normal;
+}
+
+.notation-readout--pgn {
+  white-space: pre-wrap;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.6;
 }
 
 .back-to-top {
