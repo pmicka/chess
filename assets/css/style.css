@@ -14,6 +14,7 @@
   --text-muted: #9ea6b5;
   --accent: #7dd3ff;
   --accent-strong: #5fb7ff;
+  --hint-fill: rgba(125, 211, 255, 0.14);
   --warn: #f2b464;
   --error: #ff6b6b;
   --success: #6cd69b;
@@ -495,6 +496,7 @@ a:focus-visible {
   font-size: 28px;
   user-select: none;
   color: var(--text-primary);
+  position: relative;
 }
 
 .label {
@@ -528,6 +530,17 @@ a:focus-visible {
   box-shadow: inset 0 0 0 3px rgba(125, 211, 255, 0.65);
 }
 
+/* Hint overlay sits behind pieces while keeping the outline on the square. */
+.sq.hint::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 4px;
+  background: var(--hint-fill);
+  pointer-events: none;
+  z-index: 1;
+}
+
 .sq.last {
   box-shadow: inset 0 0 0 3px rgba(255, 215, 0, 0.75);
 }
@@ -541,6 +554,8 @@ a:focus-visible {
   width: 80%;
   height: 80%;
   pointer-events: none;
+  position: relative;
+  z-index: 2;
 }
 
 .piece-img {
@@ -550,6 +565,8 @@ a:focus-visible {
   pointer-events: none;
   user-select: none;
   display: block;
+  position: relative;
+  z-index: 2;
 }
 
 button,
