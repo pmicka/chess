@@ -3,7 +3,7 @@
  * /api/health.php — Deployment health check
  */
 
-header('X-Robots-Tag: noindex');
+header('X-Robots-Tag: noindex, nofollow', true);
 header('Content-Type: application/json');
 
 function health_meta(): array

@@ -896,7 +896,7 @@ function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface
 {
     $warning = null;
 
-    $link = BASE_URL . '/my_move.php?token=' . urlencode($hostToken);
+    $link = canonical_chess_base() . '/my_move.php?token=' . urlencode($hostToken);
     $subject = 'Your turn — Me vs the World Chess';
     $body = "Game ID: {$gameId}\n"
         . "Last visitor move: {$lastMoveSan}\n"

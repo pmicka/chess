@@ -70,3 +70,25 @@ if (!defined('ADMIN_RESET_KEY_SOURCE')) {
 
 $applyPlaceholderConfig();
 unset($applyPlaceholderConfig);
+
+if (!defined('CANONICAL_CHESS_BASE')) {
+    define('CANONICAL_CHESS_BASE', 'https://patrickmicka.com/chess');
+}
+
+if (!function_exists('canonical_chess_base')) {
+    /**
+     * Return the canonical chess base URL, falling back if BASE_URL is misconfigured.
+     */
+    function canonical_chess_base(): string
+    {
+        $canonical = rtrim(CANONICAL_CHESS_BASE, '/');
+        $baseUrl = defined('BASE_URL') ? trim((string)BASE_URL) : '';
+        if ($baseUrl !== '') {
+            $normalized = rtrim($baseUrl, '/');
+            if ($normalized === $canonical) {
+                return $normalized;
+            }
+        }
+        return $canonical;
+    }
+}

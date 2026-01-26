@@ -3,7 +3,7 @@
  * /api/host_next_game.php — Host-controlled start of next game after game over.
  */
 
-header('X-Robots-Tag: noindex');
+header('X-Robots-Tag: noindex, nofollow', true);
 header('Content-Type: application/json');
 require_once __DIR__ . '/../lib/http.php';
 
