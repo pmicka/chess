@@ -15,7 +15,7 @@ Asynchronous chess experiment where the host plays the world on a single board. 
    cp config.local.php.example config.local.php
    ```
    - `YOUR_EMAIL` / `MAIL_FROM`: where host tokens are sent and which From header to use.  
-   - `BASE_URL`: full URL to this app (used in emailed links).  
+   - `BASE_URL`: full URL to this app (used in emailed links, but only honored when it matches `https://patrickmicka.com/chess`).  
    - `TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`: required for visitor moves.  
    - `DB_PATH`: defaults to `data/chess.sqlite`; keep it writable.  
    - `ADMIN_RESET_KEY`: required to use `/api/admin_reset.php`.
@@ -48,10 +48,33 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 - There are no in-repo cron jobs or deploy scripts; panel-level choices (PHP version, document root, mail configuration) are hosting-specific manual steps.
 
 ## Search Console Setup
-- **Canonical base:** The site is intended to live at `https://patrickmicka.com/chess/` (or your own `BASE_URL` ending in `/chess/`). `index.php` emits a canonical link using `BASE_URL` when set; make sure your deployment sets `BASE_URL` to the full public URL (including `/chess/`) to avoid split signals between `/` and `/chess/`.
-- **Sitemap:** Static sitemap at `https://patrickmicka.com/chess/sitemap.xml`, referenced from `robots.txt`. If you host under a different domain/path, update both files to the correct absolute URL.
+- **Canonical base:** The site is anchored to `https://patrickmicka.com/chess/` via `CANONICAL_CHESS_BASE`. Any use of `BASE_URL` is sanitized so it only takes effect if it matches the canonical base; otherwise the canonical base is used for absolute links (including emails).
+- **Sitemap:** Static sitemap at `https://patrickmicka.com/chess/sitemap.xml`. Add a line in the root site `robots.txt` (domain root) to reference it, e.g. `Sitemap: https://patrickmicka.com/chess/sitemap.xml`.
 - **Verification:** To surface a `<meta name="google-site-verification">` on the public page, set `GOOGLE_SITE_VERIFICATION` in `config.local.php` (leave it blank in git). You can also upload the Google-provided HTML verification file to the web root if your host allows static files there.
-- **Keep out of index:** `robots.txt` disallows `/chess/my_move.php`, `/chess/api/`, `/chess/init_db.php`, `/chess/scripts/`, and `/chess/data/`; `my_move.php` also sends `noindex`. Leave admin/API paths out of any sitemap entries.
+- **Keep out of index:** Action endpoints (`my_move.php`, `/api/*.php`, `init_db.php`) send `X-Robots-Tag: noindex, nofollow`. Leave admin/API paths out of any sitemap entries.
+- **Root-level HTTPS/non-www redirect:** If `/chess` is hosted in a subdirectory, keep `.htaccess` minimal here and enforce scheme/host at the domain root instead:
+  ```apache
+  RewriteEngine On
+  RewriteCond %{HTTPS} !=on [OR]
+  RewriteCond %{HTTP_HOST} ^www\. [NC]
+  RewriteRule ^ https://patrickmicka.com%{REQUEST_URI} [R=301,L]
+  ```
+
+## Validation checks
+- Verify redirects and single-hop behavior:
+  ```bash
+  curl -I http://patrickmicka.com/chess
+  curl -I http://www.patrickmicka.com/chess
+  curl -I https://www.patrickmicka.com/chess
+  ```
+- Verify `my_move.php` is noindex:
+  ```bash
+  curl -I https://patrickmicka.com/chess/my_move.php | grep -i robots
+  ```
+- Verify sitemap reachable:
+  ```bash
+  curl -I https://patrickmicka.com/chess/sitemap.xml
+  ```
 
 ## Operational notes
 - **Health check:** `GET /api/health.php` verifies DB path existence/writability and whether `TURNSTILE_SECRET_KEY` is loaded.

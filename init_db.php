@@ -1,4 +1,5 @@
 <?php
+header('X-Robots-Tag: noindex, nofollow', true);
 /**
  * init_db.php — One-time database bootstrap (CLI-friendly)
  *

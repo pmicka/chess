@@ -3,7 +3,7 @@
  * /api/admin_reset.php — Reset the active game to the starting position.
  */
 
-header('X-Robots-Tag: noindex');
+header('X-Robots-Tag: noindex, nofollow', true);
 header('Content-Type: application/json');
 
 require_once __DIR__ . '/../lib/admin_auth.php';

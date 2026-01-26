@@ -20,7 +20,7 @@
  * - Should set Content-Type: application/json.
  */
 
-header('X-Robots-Tag: noindex');
+header('X-Robots-Tag: noindex, nofollow', true);
 require_once __DIR__ . '/../lib/http.php';
 header('Content-Type: application/json');
 

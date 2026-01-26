@@ -1,4 +1,5 @@
 <?php
+header('X-Robots-Tag: noindex, nofollow', true);
 /**
  * Me vs the World Chess - Host Move Page (Token-Gated)
  *
@@ -70,7 +71,7 @@ if (!$tokenRow) {
                 'token' => $freshTokenInfo['token'],
                 'fresh' => '1',
             ];
-            header('Location: ' . BASE_URL . '/my_move.php?' . http_build_query($params));
+            header('Location: ' . canonical_chess_base() . '/my_move.php?' . http_build_query($params));
             exit;
         }
     }
