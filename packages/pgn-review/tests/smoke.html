@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PGN Review Smoke Test</title>
+  <link rel="stylesheet" href="../css/pgn-review.css" />
+  <style>
+    body {
+      background: #0b0d12;
+      color: #f5f7fb;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      padding: 24px;
+    }
+    pre {
+      background: #111522;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>PGN Review Smoke Test</h1>
+  <p>This page mounts the read-only PGN review kit. If the ECO dataset is reachable, opening info will appear.</p>
+
+  <pre><code class="language-pgn">1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7</code></pre>
+
+  <div id="review" class="pgn-review"></div>
+
+  <script src="../../assets/chess.min.js"></script>
+  <script type="module">
+    import { mountPgnReview } from '../src/pgn-review.js';
+
+    const container = document.getElementById('review');
+    const pgn = document.querySelector('code.language-pgn').textContent;
+    mountPgnReview(container, {
+      pgn,
+      showExplorer: true,
+      showNotation: true,
+      allowStorage: true,
+      assetsBaseUrl: '../../assets/',
+    });
+  </script>
+</body>
+</html>
