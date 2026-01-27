@@ -286,6 +286,7 @@ if (!empty($preloadedGame['visitor_color'])) {
 
   <script src="assets/ui_helpers.js"></script>
   <script src="assets/board_id_map.js"></script>
+  <!-- PGN review module extracted to packages/pgn-review for reuse. -->
   <script src="assets/chess.min.js"></script>
   <script>
     (() => {
