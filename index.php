@@ -573,10 +573,14 @@ if (!empty($preloadedGame['visitor_color'])) {
         return clampSelectedPly(viewState.selectedPly);
       }
 
+      function isLiveMode() {
+        return viewState.mode === 'live';
+      }
+
       function isHistoryLiveView() {
         const h = historyState;
-        if (!h) return false;
-        return viewState.mode === 'live' && getSelectedHistoryIndex() === h.liveIndex;
+        if (!h) return isLiveMode();
+        return isLiveMode() && getSelectedHistoryIndex() === h.liveIndex;
       }
 
       function isTypingContext(ev) {
@@ -1625,7 +1629,9 @@ if (!empty($preloadedGame['visitor_color'])) {
           updateViewState({ selectedPly: clamped });
         }
         historyState.idx = clamped;
-        const targetFen = h.timeline[clamped];
+        const targetFen = isHistoryLiveView()
+          ? (state?.fen || h.timeline[clamped])
+          : (h.timeline[clamped] || state?.fen);
         if (!forceRender && targetFen === game.fen()) {
           updateHistoryUI();
           updateStatusMessage();
@@ -1800,6 +1806,16 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
+      function warnOnLiveFenTurnMismatch(currentState, loadedFen) {
+        if (!currentState || !loadedFen || !currentState.turn_color) return;
+        const parts = String(loadedFen).trim().split(/\s+/);
+        const fenTurn = parts[1] === 'b' ? 'black' : (parts[1] === 'w' ? 'white' : null);
+        const serverTurn = normalizeColor(currentState.turn_color);
+        if (fenTurn && serverTurn && fenTurn !== serverTurn) {
+          setStatus(`Diagnostic: canonical FEN says ${fenTurn} to move, but server turn_color says ${serverTurn}.`, 'error');
+        }
+      }
+
       function applyStateData(newState, { resetSelection = true } = {}) {
         const canonicalState = stateStore.set(newState);
         latestFetchedStateFingerprint = stateFingerprint(canonicalState);
@@ -1815,22 +1831,28 @@ if (!empty($preloadedGame['visitor_color'])) {
         hostColorLabel.textContent = hostColor;
 
         const historyResult = syncHistoryFromState(canonicalState) || {};
-        const fenFromHistory = historyResult.fen || null;
         const normalizedPgnForDisplay = historyResult.normalizedPgn
           || deriveDisplayPgn(canonicalState.pgn, parseSansFromPgn(canonicalState.pgn));
         setNotationData({ fen: canonicalState.fen, pgn: normalizedPgnForDisplay });
 
         const selectedIdx = getSelectedHistoryIndex();
-        const fenToLoad = (historyState && Array.isArray(historyState.timeline) && historyState.timeline[selectedIdx])
+        const historyFenForSelection = historyState && Array.isArray(historyState.timeline)
           ? historyState.timeline[selectedIdx]
-          : (fenFromHistory || canonicalState.fen);
-        const shouldRenderPosition = (viewState.mode === 'live') || (fenToLoad !== game.fen());
+          : null;
+        // Live board rendering is driven by the canonical API FEN. PGN-derived
+        // history FENs are only authoritative while reviewing history.
+        const fenToLoad = isLiveMode()
+          ? canonicalState.fen
+          : (historyFenForSelection || canonicalState.fen);
+        const shouldRenderPosition = isLiveMode() || (fenToLoad !== game.fen());
 
         if (shouldRenderPosition) {
           try {
             game.load(fenToLoad);
           } catch (err) {
-            blockForStateError('Invalid FEN from server. Refresh later.');
+            blockForStateError(isLiveMode()
+              ? 'Invalid canonical FEN from server. Refresh later.'
+              : 'Invalid FEN from server. Refresh later.');
             return;
           }
         }
@@ -1853,6 +1875,9 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
 
         updateStatusMessage();
+        if (isLiveMode()) {
+          warnOnLiveFenTurnMismatch(canonicalState, fenToLoad);
+        }
 
         if (resetSelection) {
           clearSelection();
@@ -1949,6 +1974,9 @@ if (!empty($preloadedGame['visitor_color'])) {
           applyStateData(queuedServerState, { resetSelection: true });
           return;
         }
+        if (forceLive && state) {
+          applyStateData(state, { resetSelection: true });
+        }
         fetchState({ resetSelection: true }).catch(handleStateError);
       }
 
@@ -1994,9 +2022,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       if (btnLive) {
         btnLive.addEventListener('click', () => {
           applyQueuedStateOrFetch({ forceLive: true });
-          const h = historyState;
-          const next = h ? h.liveIndex : 0;
-          applyHistoryPosition(next, { forceRender: true, mode: 'live' });
         });
       }
 
@@ -2015,9 +2040,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           applyHistoryPosition(0, { forceRender: true, mode: 'review' });
         } else if (ev.key === 'End') {
           ev.preventDefault();
-          const h = historyState;
-          const latest = h ? h.liveIndex : viewState.latestPly;
-          applyHistoryPosition(latest, { forceRender: true, mode: 'live' });
+          applyQueuedStateOrFetch({ forceLive: true });
         }
       });
 
