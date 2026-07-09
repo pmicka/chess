@@ -459,9 +459,42 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
         const normalized = normalizeMovetext(pgnText);
         if (!normalized) return [];
         const parser = new Chess();
-        const loaded = parser.load_pgn(normalized, { sloppy: true });
-        if (!loaded) return [];
-        return parser.history();
+        try {
+          const loaded = parser.load_pgn(normalized, { sloppy: true });
+          if (!loaded) return [];
+          return parser.history();
+        } catch (err) {
+          return [];
+        }
+      }
+
+      function normalizeTurnColor(value) {
+        const normalized = (value || '').toString().trim().toLowerCase();
+        if (normalized === 'w' || normalized === 'white') return 'white';
+        if (normalized === 'b' || normalized === 'black') return 'black';
+        return '';
+      }
+
+      function loadCanonicalFen(fen) {
+        if (!fen || !fen.toString().trim()) {
+          throw new Error('Canonical FEN could not be loaded: server did not provide FEN.');
+        }
+        const loaded = game.load(fen);
+        if (loaded === false) {
+          throw new Error('Canonical FEN could not be loaded: server provided invalid FEN.');
+        }
+      }
+
+      function validateCanonicalFenTurn(apiState) {
+        const fenTurnColor = normalizeTurnColor(game.turn());
+        const apiTurnColor = normalizeTurnColor(apiState.turn_color || apiState.turn);
+        if (apiTurnColor && fenTurnColor && apiTurnColor !== fenTurnColor) {
+          throw new Error(`Canonical FEN turn (${fenTurnColor}) does not match server turn (${apiTurnColor}).`);
+        }
+        const expectedPlayableColor = normalizeTurnColor(youColor || visitorColor);
+        if (apiTurnColor && expectedPlayableColor && apiTurnColor === expectedPlayableColor && fenTurnColor !== expectedPlayableColor) {
+          throw new Error(`Canonical FEN turn (${fenTurnColor}) does not match your turn (${expectedPlayableColor}).`);
+        }
       }
 
       function deriveDisplayPgn(rawPgn, sansMoves) {
@@ -1133,26 +1166,16 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
             renderScoreLine(state.score, state.score_line);
 
             game.reset();
-            let loadedFromPgn = false;
+            try {
+              loadCanonicalFen(state.fen);
+              validateCanonicalFenTurn(state);
+            } catch (err) {
+              throw new Error(err && err.message ? err.message : 'Canonical FEN could not be loaded.');
+            }
+
             const normalizedPgn = normalizeMovetext(state.pgn);
-            if (normalizedPgn) {
-              try {
-                game.load_pgn(normalizedPgn);
-                loadedFromPgn = true;
-              } catch (err) {
-                loadedFromPgn = false;
-              }
-            }
-
-            if (!loadedFromPgn) {
-              try {
-                game.load(state.fen);
-              } catch (err) {
-                throw new Error('Invalid FEN from server');
-              }
-            }
-
-            const displayPgn = deriveDisplayPgn(normalizedPgn, game.history());
+            const notationSansMoves = parseSansFromPgn(normalizedPgn);
+            const displayPgn = deriveDisplayPgn(normalizedPgn, notationSansMoves);
             setNotationData({ fen: state.fen, pgn: displayPgn });
 
             debugBox.textContent = `game_id=${state.id} status=${state.status} updated_at=${state.updated_at}`;
