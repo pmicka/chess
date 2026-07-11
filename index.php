@@ -1210,13 +1210,41 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
-      function parseSansFromPgn(pgnText) {
-        const normalized = normalizeMovetext(pgnText);
-        if (!normalized) return [];
+
+      function stripSafePgnNonMoveContent(pgnText) {
+        return (pgnText || '')
+          .replace(/^\s*\[[^\]\r\n]*\]\s*$/gm, ' ')
+          .replace(/\{[^}]*\}/g, ' ')
+          .replace(/;[^\r\n]*/g, ' ')
+          .replace(/\([^()]*\)/g, ' ')
+          .replace(/\$\d+/g, ' ')
+          .replace(/\b(?:1-0|0-1|1\/2-1\/2|\*)\b/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function loadPgnHistorySans(pgnText, { allowNormalization = false } = {}) {
+        const source = allowNormalization
+          ? normalizeMovetext(pgnText)
+          : stripSafePgnNonMoveContent(pgnText);
+        if (!source) return { historySans: [], normalizedPgn: '' };
         const parser = new Chess();
-        const loaded = parser.load_pgn(normalized, { sloppy: true });
-        if (!loaded) return [];
-        return parser.history();
+        const loaded = parser.load_pgn(source, { sloppy: true });
+        if (!loaded) return null;
+        const historySans = parser.history();
+        return {
+          historySans,
+          normalizedPgn: buildPgnFromSansMoves(historySans) || source,
+        };
+      }
+
+      function parseSansFromPgn(pgnText) {
+        const rawResult = loadPgnHistorySans(pgnText, { allowNormalization: false });
+        const fallbackResult = loadPgnHistorySans(pgnText, { allowNormalization: true });
+        const best = [rawResult, fallbackResult]
+          .filter(Boolean)
+          .sort((a, b) => b.historySans.length - a.historySans.length)[0];
+        return best ? best.historySans : [];
       }
 
       function getSnapshotSans() {
@@ -1507,27 +1535,52 @@ if (!empty($preloadedGame['visitor_color'])) {
       function buildHistoryTimeline(initialFen, movesPgn) {
         const startFen = (initialFen && initialFen !== 'start') ? initialFen : null;
         const seed = startFen ? new Chess(startFen) : new Chess();
-        const timeline = [seed.fen()];
-        const historySans = [];
-        const normalized = normalizeMovetext(movesPgn);
-        if (!normalized) return { timeline, historySans, normalizedPgn: '' };
+        const baseTimeline = [seed.fen()];
+        const rawMovetext = stripSafePgnNonMoveContent(movesPgn);
+        if (!rawMovetext) return { timeline: baseTimeline, historySans: [], normalizedPgn: '' };
 
-        const parser = startFen ? new Chess(startFen) : new Chess();
-        const loaded = parser.load_pgn(normalized, { sloppy: true });
-        if (!loaded) {
-          throw new Error('Invalid PGN');
-        }
-        historySans.push(...parser.history());
-        const replay = startFen ? new Chess(startFen) : new Chess();
-        historySans.forEach((san, idx) => {
-          const move = replay.move(san, { sloppy: true });
-          if (!move) {
-            throw new Error(`Illegal move at ply ${idx + 1}: ${san}`);
+        const attempts = [
+          { label: 'raw', pgn: rawMovetext },
+          { label: 'normalized-fallback', pgn: normalizeMovetext(movesPgn) },
+        ];
+        let best = null;
+        const errors = [];
+
+        attempts.forEach((attempt) => {
+          if (!attempt.pgn) return;
+          try {
+            const parser = startFen ? new Chess(startFen) : new Chess();
+            const loaded = parser.load_pgn(attempt.pgn, { sloppy: true });
+            if (!loaded) {
+              errors.push(`${attempt.label}: invalid PGN`);
+              return;
+            }
+            const historySans = parser.history();
+            const replay = startFen ? new Chess(startFen) : new Chess();
+            const timeline = [seed.fen()];
+            for (let idx = 0; idx < historySans.length; idx += 1) {
+              const move = replay.move(historySans[idx], { sloppy: true });
+              if (!move) throw new Error(`Illegal move at ply ${idx + 1}: ${historySans[idx]}`);
+              timeline.push(replay.fen());
+            }
+            const candidate = {
+              timeline,
+              historySans,
+              normalizedPgn: buildPgnFromSansMoves(historySans) || attempt.pgn,
+              source: attempt.label,
+            };
+            if (!best || candidate.historySans.length > best.historySans.length) {
+              best = candidate;
+            }
+          } catch (err) {
+            errors.push(`${attempt.label}: ${err && err.message ? err.message : String(err)}`);
           }
-          timeline.push(replay.fen());
         });
-        const normalizedPgn = buildPgnFromSansMoves(historySans) || normalized;
-        return { timeline, historySans, normalizedPgn };
+
+        if (!best) {
+          throw new Error(errors.length ? errors.join('; ') : 'Invalid PGN');
+        }
+        return best;
       }
 
       function resetHistoryNotice() {
@@ -1545,6 +1598,10 @@ if (!empty($preloadedGame['visitor_color'])) {
           const historyBundle = buildHistoryTimeline(initialFen, movesPgn);
           const timeline = historyBundle?.timeline || [];
           const sans = historyBundle?.historySans || [];
+          const finalTimelineFen = timeline.length ? timeline[timeline.length - 1] : null;
+          if (fallbackFen && finalTimelineFen && finalTimelineFen !== fallbackFen) {
+            throw new Error('PGN history does not match the canonical live position');
+          }
           const liveIndex = Math.max(0, timeline.length - 1);
           const maxIdx = Math.max(0, timeline.length - 1);
           const desiredIdx = viewState.mode === 'live'
