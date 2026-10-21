@@ -49,7 +49,7 @@ class HostAuthorization(unittest.TestCase):
                 ["git", "ls-files", "-z"], cwd=ROOT
             ).decode().split("\0")
             # Include runtime helpers/CLI tools from an uncommitted implementation.
-            for directory in ('lib', 'scripts'):
+            for directory in ('lib', 'scripts', 'assets'):
                 for source in (ROOT / directory).iterdir():
                     if source.suffix not in ('.php', '.js'): continue
                     name = str(source.relative_to(ROOT))
@@ -95,10 +95,15 @@ foreach (['http', 'https'] as $scheme) {
 class SyntheticTurnstile {
     public $context; private $position = 0;
     function stream_open($path, $mode, $options, &$opened) {
-        return $path === 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
+        return $path === 'https://challenges.cloudflare.com/turnstile/v0/siteverify'
+            && !(is_file(__DIR__ . '/data/captcha-mode') && trim(file_get_contents(__DIR__ . '/data/captcha-mode')) === 'network_failure');
     }
-    function stream_read($count) { $body = '{"success":true}'; $part = substr($body, $this->position, $count); $this->position += strlen($part); return $part; }
-    function stream_eof() { return $this->position >= 16; }
+    private function body() {
+        return is_file(__DIR__ . '/data/captcha-mode') && trim(file_get_contents(__DIR__ . '/data/captcha-mode')) === 'reject'
+            ? '{"success":false,"error-codes":["synthetic-rejection"]}' : '{"success":true}';
+    }
+    function stream_read($count) { $part = substr($this->body(), $this->position, $count); $this->position += strlen($part); return $part; }
+    function stream_eof() { return $this->position >= strlen($this->body()); }
     function stream_stat() { return []; }
 }
 stream_wrapper_register('https', 'SyntheticTurnstile');
@@ -154,6 +159,8 @@ stream_wrapper_register('https', 'SyntheticTurnstile');
             return [dict(row) for row in connection.execute(query, parameters).fetchall()]
 
     def setUp(self):
+        self.execute("DELETE FROM notification_outbox")
+        self.execute("DELETE FROM move_receipts")
         self.execute("DELETE FROM game_transitions")
         self.execute("DELETE FROM game_results")
         self.execute("DELETE FROM tokens")
@@ -162,7 +169,7 @@ stream_wrapper_register('https', 'SyntheticTurnstile');
         self.execute("INSERT INTO games (id,host_color,visitor_color,turn_color,status,fen,pgn) "
                      "VALUES (1,'white','black','white','active',?,'')", (START_FEN,))
         self.execute("INSERT INTO locks (game_id,name) VALUES (1,'fixture-lock')")
-        for name in ("resend_throttle.json", "mailbox.jsonl", "application.log", "node-runtime"):
+        for name in ("resend_throttle.json", "mailbox.jsonl", "application.log", "node-runtime", "captcha-mode"):
             (self.app / "data" / name).unlink(missing_ok=True)
         (self.app / "data/mail-mode").write_text("accept")
         self.score = b'{"host_wins":3,"world_wins":2,"draws":1,"last_counted_game_id":0}'
@@ -181,7 +188,7 @@ stream_wrapper_register('https', 'SyntheticTurnstile');
     def snapshot(self):
         # Assertions compare digests so a failure cannot print bearer credentials.
         rows = {table: self.execute(f"SELECT * FROM {table} ORDER BY 1")
-                for table in ("games", "tokens", "locks", "game_results", "game_transitions", "score_baseline")}
+                for table in ("games", "tokens", "locks", "game_results", "game_transitions", "score_baseline", "notification_outbox", "move_receipts")}
         return hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
 
     def request(self, path, payload=None, method=None):
@@ -426,7 +433,8 @@ stream_wrapper_register('https', 'SyntheticTurnstile');
                 (self.app / "data/resend_throttle.json").unlink(missing_ok=True)
                 (self.app / "data/mail-mode").write_text(mode)
                 response = self.request("api/my_move_submit.php", {"action": "resend", "token": credential})
-                self.assertEqual(response[0], 500)
+                self.assertEqual(response[0], 200)
+                self.assertEqual(json.loads(response[1])['code'], 'queued')
                 for row in self.execute("SELECT token FROM tokens"):
                     self.credentials.append(row["token"])
                 self.assert_private(response)

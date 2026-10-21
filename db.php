@@ -23,6 +23,8 @@ if (!file_exists(__DIR__ . '/config.php')) {
 }
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/lib/schema.php';
+require_once __DIR__ . '/lib/recovery.php';
+require_once __DIR__ . '/lib/notifications.php';
 require_once __DIR__ . '/lib/chess.php';
 
 // Ensure required constants exist so the rest of the app can rely on them.
@@ -525,26 +527,30 @@ function apply_move_to_fen(string $fen, string $from, string $to, string $promot
 /**
  * Send the host-turn email for the given game/token.
  */
-function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface $expiresAt, string $lastMoveSan): array
+function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface $expiresAt, string $lastMoveSan, ?string $messageId = null, string $purpose = 'your_move'): array
 {
     $warning = null;
 
     $link = canonical_chess_base() . '/my_move.php?token=' . urlencode($hostToken);
-    $subject = 'Your turn — Me vs the World Chess';
+    $subject = $purpose === 'next_game' ? 'Game complete — The Internet Gambit' : 'Your turn — The Internet Gambit';
     $body = "Game ID: {$gameId}\n"
-        . "Last visitor move: {$lastMoveSan}\n"
+        . ($purpose === 'next_game' ? "Game complete. Use this link to start the next game.\n" : "It is your turn.\n")
+        . "Last move: {$lastMoveSan}\n"
         . "Link: {$link}\n"
         . "Token expires at: " . ($expiresAt instanceof DateTimeInterface ? $expiresAt->format('Y-m-d H:i:s T') : 'n/a') . "\n";
 
-    $emailHeaders = 'From: ' . MAIL_FROM . "\r\n";
+    $emailHeaders = 'From: ' . MAIL_FROM . "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n";
+    if ($messageId !== null && preg_match('/^[a-zA-Z0-9.@_-]+$/D', $messageId)) $emailHeaders .= 'Message-ID: <'.$messageId.">\r\n";
 
     $tokenSuffix = token_suffix($hostToken);
 
     try {
-        if (!function_exists('mail')) {
+        if (!filter_var(YOUR_EMAIL,FILTER_VALIDATE_EMAIL) || trim(MAIL_FROM)==='' || preg_match('/[\r\n]/',MAIL_FROM)) {
+            $warning = 'Email configuration invalid';
+        } elseif (!function_exists('mail')) {
             $warning = 'mail() unavailable';
         } else {
-            $mailSent = @mail(YOUR_EMAIL, $subject, $body, $emailHeaders);
+            $mailSent = @mail(YOUR_EMAIL, '=?UTF-8?B?'.base64_encode($subject).'?=', $body, $emailHeaders);
             if ($mailSent === false) {
                 $warning = 'Email failed';
             }
@@ -556,7 +562,7 @@ function send_host_turn_email(int $gameId, string $hostToken, ?DateTimeInterface
     log_event('email_host_turn', [
         'game_id' => $gameId,
         'token_suffix' => $tokenSuffix,
-        'result' => $warning === null ? 'sent' : 'failed',
+        'result' => $warning === null ? 'accepted' : 'failed',
     ]);
 
     if ($warning !== null) {

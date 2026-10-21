@@ -118,6 +118,8 @@ $rawPromotion = array_key_exists('promotion', $data) ? $data['promotion'] : '';
 $promotion = is_string($rawPromotion) ? strtolower(trim($rawPromotion)) : null;
 $gameId = clean_nonnegative_int($data['game_id'] ?? null);
 $expectedRevision = clean_nonnegative_int($data['expected_revision'] ?? null);
+$submissionId = submission_id($data['submission_id'] ?? null);
+$receiptRequest = ['game_id'=>$gameId,'expected_revision'=>$expectedRevision,'from'=>$from,'to'=>$to,'promotion'=>$promotion];
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     respond_json(400, ['ok' => false, 'error' => 'FEN/PGN are server-managed. Submit coordinates only.', 'code' => 'server_managed_fields']);
@@ -131,6 +133,12 @@ $db = null;
 
 try {
     $db = get_db();
+    require_phase4($db);
+    if ($action === 'receipt') {
+        $receipt = host_action_receipt($db, $tokenValue);
+        respond_json($receipt === null ? 404 : 200, $receipt ?? ['ok'=>false,'code'=>'receipt_missing']);
+    }
+    if (!in_array($action, ['submit','resend'], true)) respond_json(400, ['ok'=>false,'code'=>'action_invalid']);
 
     if ($action === 'resend') {
         begin_write_transaction($db);
@@ -169,26 +177,16 @@ try {
 
         $expiry = default_host_token_expiry();
         $freshToken = insert_host_move_token($db, (int)$game['id'], $expiry, $validation['row']['purpose']);
-
+        $notificationId = enqueue_host_notification($db, (int)$game['id'], $freshToken);
         $db->commit();
-
-        $emailResult = send_host_turn_email((int)$game['id'], $freshToken, $expiry, $game['last_move_san'] ?? 'n/a');
-
-        $response = [
-            'ok' => ($emailResult['ok'] ?? false) === true,
-            'message' => ($emailResult['ok'] ?? false) === true ? 'Link emailed. Open the new email to continue.' : 'Email failed.',
-            'code' => ($emailResult['ok'] ?? false) === true ? 'sent' : 'email_failed',
-        ];
-
-        if (($emailResult['ok'] ?? false) !== true) {
-            $response['error'] = $emailResult['warning'] ?? 'Failed to send email.';
-        }
-
-        $statusCode = ($emailResult['ok'] ?? false) === true ? 200 : 500;
-        respond_json($statusCode, $response);
+        $notification = try_dispatch_notification($db, $notificationId);
+        respond_json(200, ['ok'=>true, 'notification'=>$notification, 'code'=>$notification === 'accepted' ? 'sent' : 'queued',
+            'message'=>$notification === 'accepted' ? 'Email submitted. Open the new email to continue.' : 'Email queued for retry. Your game is unchanged.']);
     }
 
     begin_write_transaction($db);
+    $receipt = move_receipt($db, 'host', $submissionId, $tokenValue, $receiptRequest);
+    if ($receipt !== null) { $db->rollBack(); respond_json(200, $receipt); }
 
     $validation = validate_host_token($db, $tokenValue);
     if (($validation['ok'] ?? false) !== true) {
@@ -260,8 +258,9 @@ try {
         record_detected_result($db, $game, $currentStatus);
         $completionExpiry = default_host_token_expiry();
         $completionToken = insert_host_move_token($db, (int)$game['id'], $completionExpiry, 'next_game');
+        $notificationId = enqueue_host_notification($db, (int)$game['id'], $completionToken);
         $db->commit();
-        send_host_turn_email((int)$game['id'], $completionToken, $completionExpiry, $game['last_move_san'] ?? 'Game finished');
+        try_dispatch_notification($db, $notificationId);
         respond_json(409, ['ok' => false, 'error' => 'Game is over. Waiting for next game.', 'code' => 'GAME_OVER']);
     }
 
@@ -324,15 +323,22 @@ try {
     $markUsed->execute([':token' => $tokenValue]);
     revoke_game_tokens($db, (int)$game['id']);
     $nextGameToken = null;
+    $notificationId = null;
     if ($isOver) {
         record_detected_result($db, $game, $newStatus);
         $nextGameToken = insert_host_move_token($db, (int)$game['id'], default_host_token_expiry(), 'next_game');
+        $notificationId = enqueue_host_notification($db, (int)$game['id'], $nextGameToken);
     }
 
     // Clear visitor move lock so the next visitor turn can acquire it.
     $db->prepare("DELETE FROM locks WHERE game_id = :id")->execute([':id' => $game['id']]);
 
+    $response = ['ok'=>true, 'game_id'=>(int)$game['id'], 'next_turn'=>$nextTurn,
+        'revision'=>$expectedRevision + 1, 'next_game_token'=>$nextGameToken,
+        'completion_required'=>$isOver, 'message'=>$isOver ? 'Move accepted. Open the completion email to start the next game.' : 'Move accepted. Visitors may move now.'];
+    save_move_receipt($db, 'host', $submissionId, $tokenValue, $receiptRequest, $response, (int)$tokenRow['id']);
     $db->commit();
+    $response['notification'] = try_dispatch_notification($db, $notificationId);
 
     error_log(sprintf(
         'my_move_submit write game=%d fen_len=%d',
@@ -349,14 +355,10 @@ try {
         'token_suffix' => token_suffix($tokenValue),
     ]);
 
-    respond_json(200, [
-        'ok' => true,
-        'game_id' => (int)$game['id'],
-        'next_turn' => $nextTurn,
-        'revision' => $expectedRevision + 1,
-        'next_game_token' => $nextGameToken,
-        'message' => 'Move accepted. Visitors may move now.',
-    ]);
+    respond_json(200, $response);
+} catch (Phase4MigrationRequired $e) {
+    log_event('phase4_migration_required');
+    respond_json(503, ['ok'=>false, 'error'=>'Game updates are temporarily unavailable. Please try again later.', 'code'=>'maintenance']);
 } catch (ChessStateException $e) {
     if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
     respond_json($e->httpStatus, ['ok' => false, 'error' => $e->getMessage(), 'code' => $e->responseCode]);

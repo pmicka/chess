@@ -7,6 +7,7 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 - Node.js 18+ (a maintained release recommended) and enabled `proc_open()` are required for authoritative move/status validation using the existing bundled chess.js asset. `shell_exec()` is no longer used. If needed, set `CHESS_NODE_BINARY` to the absolute executable path in `config.local.php`. The regression suites use the real local engine; shared-hosting support must still be verified under the web user.
 - Cloudflare Turnstile keys: `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are required for visitor move submission; without them, `/api/visitor_move.php` will reject requests.
 - Outgoing mail transport for PHP `mail()` so host links can be delivered to `YOUR_EMAIL`.
+- A once-per-minute CLI notification worker for durable retries; see the [Phase 4 deployment guide](docs/NOTIFICATIONS_RECOVERY_PHASE4.md).
 - Web server capable of running PHP (built-in `php -S` works for local use).
 
 ## Quick start (local)
@@ -72,7 +73,7 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 
 ## Operational notes
 - **Health check:** `GET /api/health.php` verifies DB path existence/writability and whether `TURNSTILE_SECRET_KEY` is loaded.
-- **Admin reset:** `POST /api/admin_reset.php` with `X-Admin-Key: <ADMIN_RESET_KEY>` resets the active game to the starting position, deletes outstanding tokens/locks, and returns a fresh `host_token`. On DreamHost/shared hosting you can set `ADMIN_RESET_KEY` as a panel-level environment variable or inside `config.local.php`; clients may send it via the `X-Admin-Key` header or an `admin_key` POST body field.
+- **Admin reset:** `POST /api/admin_reset.php` with `X-Admin-Key: <ADMIN_RESET_KEY>` resets the active game to the starting position, revokes outstanding tokens, clears locks, and returns a fresh `host_token`. This destructive operation is never host-link recovery. On DreamHost/shared hosting you can set `ADMIN_RESET_KEY` as a panel-level environment variable or inside `config.local.php`; clients may send it via the `X-Admin-Key` header or an `admin_key` POST body field.
 - **State integrity and migration:** Existing installations must follow the [Phase 2 migration guide](docs/STATE_INTEGRITY_PHASE2.md). Runtime never creates a replacement database or migrates implicitly. Move submissions require `game_id` and `expected_revision`; refresh existing browser tabs after deployment. SQLite now holds the imported score baseline and unique game results; the old score JSON remains unchanged as an archive.
 - **Host next game:** Finished games issue a separate `next_game` link. POST its credential to `/api/host_next_game.php` to create one successor; replay returns the same successor ID without repeating score updates or emails. Used move tokens cannot start another game.
 - **Host move submissions:** Host links are single-use capabilities emailed to `YOUR_EMAIL` by `send_host_turn_email()` (via `mail()`). `action=resend` requires a recognized unused/unrevoked capability issued less than seven days ago, bound to the latest game's current revision and appropriate host action. It sends a replacement only to the configured host email and never returns that credential. GET/HEAD never recover or issue tokens. See the [current token and deployment policy](docs/STATE_INTEGRITY_PHASE2.md).
@@ -95,4 +96,11 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 - Run `node --test tests/chess_rules.test.js` and `PHP_BIN=php python3 tests/chess_legality.py` for Phase 3 plus all Phase 1/2 integration regressions. Run `php -l` on modified PHP files. Tests require Python's standard library, PHP 8+ with PDO SQLite, and Node.js; no dependency installation or upgrade is needed.
 - Optional existing-browser checks: `PHP_BIN=php CHROMIUM_BIN=/usr/bin/chromium python3 tests/browser_chess.py` (requires Playwright/Chromium already available).
 - Before deploying Phase 3, run its [read-only state check and deployment procedure](docs/CHESS_VALIDATION_PHASE3.md). No Phase 3 schema migration is required after Phase 2. Missing or divergent PGN blocks submissions for review; it is never rewritten automatically.
+
+## Phase 4 notifications and recovery
+
+- Follow the [Phase 4 migration, cron, email recovery, and rollback guide](docs/NOTIFICATIONS_RECOVERY_PHASE4.md) before enabling writes. Schema 3 adds an outbox and public submission receipts; existing games, scores, and credentials are preserved. Schema 2 reads remain available while the explicit migration is pending.
+- Email intent commits with moves/transitions. Failed transport submissions retry through the private CLI worker. `accepted` records transport acceptance, never proof of delivery. Mail failures do not reject a committed move; recognized-link resend can report `queued` without exposing a secret.
+- Updated browser submissions use idempotent receipts to recover lost responses. Visitor session storage holds only public move fields and an identifier; host credentials are never stored there. Valid host-link loading, legal server validation, and the existing authorization boundaries remain.
+- Run `PHP_BIN=php python3 tests/notification_recovery.py` for all Phase 1–4 integration checks, plus `tests/browser_recovery.py` for optional isolated browser recovery checks. No real emails or production services are used by these tests.
 - Use feature branches and pull requests as usual; there is no enforced branching convention in-repo.

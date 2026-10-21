@@ -1,11 +1,43 @@
 <?php
 
-const CHESS_SCHEMA_VERSION = 2;
-
 function phase2_installed(PDO $db): bool
 {
     $exists = $db->query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_meta'")->fetchColumn();
-    return $exists && (int)$db->query('SELECT schema_version FROM app_meta WHERE id=1')->fetchColumn() === CHESS_SCHEMA_VERSION;
+    return $exists && in_array((int)$db->query('SELECT schema_version FROM app_meta WHERE id=1')->fetchColumn(), [2, 3], true);
+}
+
+function phase4_installed(PDO $db): bool
+{
+    return phase2_installed($db) && (int)$db->query('SELECT schema_version FROM app_meta WHERE id=1')->fetchColumn() === 3;
+}
+
+/** Additive, explicit migration. Never imports scores or changes existing tokens. */
+function migrate_phase4(PDO $db): void
+{
+    if (phase4_installed($db)) return;
+    if (!phase2_installed($db)) throw new RuntimeException('Phase 2 migration required first.');
+    begin_write_transaction($db);
+    try {
+        if (phase4_installed($db)) { $db->commit(); return; }
+        phase2_preflight($db);
+        $db->exec("CREATE TABLE notification_outbox(
+            id INTEGER PRIMARY KEY,token_id INTEGER NOT NULL UNIQUE REFERENCES tokens(id),
+            game_id INTEGER NOT NULL REFERENCES games(id),game_revision INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sending','accepted','obsolete','failed')),
+            attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),next_attempt_at INTEGER NOT NULL DEFAULT 0,
+            lease_until INTEGER,claim TEXT,last_error TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,accepted_at TEXT)");
+        $db->exec('CREATE INDEX outbox_due ON notification_outbox(status,next_attempt_at,lease_until)');
+        $db->exec("CREATE TABLE move_receipts(
+            submission_hash TEXT PRIMARY KEY,actor TEXT NOT NULL CHECK(actor IN ('visitor','host')),
+            request_hash TEXT NOT NULL,token_id INTEGER UNIQUE REFERENCES tokens(id),
+            game_id INTEGER NOT NULL REFERENCES games(id),source_revision INTEGER NOT NULL,
+            response_json TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+        $db->exec('UPDATE app_meta SET schema_version=3 WHERE id=1');
+        $db->commit();
+    } catch (Throwable $e) {
+        if ($db->inTransaction()) $db->rollBack();
+        throw $e;
+    }
 }
 
 /** Read-only preflight. Never repairs, deletes, or selects a winning game. */
