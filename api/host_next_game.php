@@ -12,6 +12,7 @@ if ($tokenValue === '') respond_json(401, ['ok' => false, 'error' => 'Token miss
 $db = null;
 try {
     $db = get_db();
+    require_phase4($db);
     begin_write_transaction($db);
     // A spent capability can retrieve ONLY its own public transition receipt.
     // This branch never creates a game, issues a token, records a score, or emails.
@@ -21,7 +22,7 @@ try {
     $next = $receipt->fetch(PDO::FETCH_ASSOC);
     $replayed = (bool)$next;
     $openingToken = null;
-    $openingExpiry = null;
+    $notificationId = null;
     if (!$replayed) {
         $validation = validate_host_token($db, $tokenValue, false, false, 'next_game');
         if (!$validation['ok']) {
@@ -49,16 +50,13 @@ try {
         $query->execute([$created['id']]);
         $next = $query->fetch(PDO::FETCH_ASSOC);
         $openingToken = $created['host_token'];
-        $openingExpiry = $created['token_expires_at'];
+        if ($openingToken !== null) $notificationId = enqueue_host_notification($db, (int)$next['id'], $openingToken);
     }
     $db->commit();
     $response = ['ok' => true, 'new_game_id' => (int)$next['id'], 'host_color' => $next['host_color'],
         'visitor_color' => $next['visitor_color'], 'turn_color' => $next['turn_color'],
         'revision' => (int)$next['revision'], 'message' => $replayed ? 'Next game already created.' : 'Next game created.'];
-    if ($openingToken !== null) {
-        $mail = send_host_turn_email((int)$next['id'], $openingToken, $openingExpiry, 'New game');
-        if (!$mail['ok']) $response['warning'] = 'Opening link email failed; the new game was created.';
-    }
+    $response['notification'] = try_dispatch_notification($db, $notificationId);
     respond_json(200, $response);
 } catch (PDOException $e) {
     if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();

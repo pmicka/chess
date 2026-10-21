@@ -143,7 +143,9 @@ try {
         ]);
 
         $db->prepare('DELETE FROM locks WHERE game_id = :id')->execute([':id' => $gameId]);
-        $db->prepare('DELETE FROM tokens WHERE game_id = :id')->execute([':id' => $gameId]);
+        // Preserve audit/receipt/outbox references; the new revision and explicit
+        // revocation invalidate old authority without deleting its history.
+        revoke_game_tokens($db, $gameId);
     } else {
         $insert = $db->prepare("
             INSERT INTO games (host_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at)

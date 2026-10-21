@@ -74,13 +74,12 @@ $rawPromotion = array_key_exists('promotion', $data) ? $data['promotion'] : '';
 $promotion = is_string($rawPromotion) ? strtolower(trim($rawPromotion)) : null;
 $gameId = clean_nonnegative_int($data['game_id'] ?? null);
 $expectedRevision = clean_nonnegative_int($data['expected_revision'] ?? null);
+$submissionId = submission_id($data['submission_id'] ?? null);
+$action = $data['action'] ?? 'submit';
+$receiptRequest = ['game_id'=>$gameId,'expected_revision'=>$expectedRevision,'from'=>$from,'to'=>$to,'promotion'=>$promotion];
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     respond_json(400, ['ok' => false, 'error' => 'FEN/PGN are server-managed. Submit coordinates only.', 'code' => 'server_managed_fields']);
-}
-
-if ($turnstileToken === '') {
-    respond_json(400, ['ok' => false, 'error' => 'CAPTCHA token missing', 'code' => 'captcha_missing']);
 }
 
 if ($from === '' || $to === '' || $gameId === null || $gameId < 1 || $expectedRevision === null) {
@@ -138,27 +137,34 @@ function verify_turnstile(string $token): array
     return ['success' => $success, 'errors' => $errors];
 }
 
-$turnstileResult = verify_turnstile($turnstileToken);
-
-if ($turnstileResult['success'] !== true) {
-    log_event('visitor_move_captcha_fail', [
-        'ip' => client_ip(),
-        'errors' => implode(',', $turnstileResult['errors'] ?? []),
-    ]);
-    respond_json(400, [
-        'ok' => false,
-        'error' => 'CAPTCHA verification failed',
-        'turnstile_errors' => $turnstileResult['errors'],
-        'code' => 'captcha_failed',
-    ]);
-}
-
 $db = null;
-$warning = null;
-
 try {
     $db = get_db();
+    require_phase4($db);
+    // Receipt reads disclose only an already committed public outcome. They do
+    // not reuse CAPTCHA, acquire a turn, mint credentials or dispatch mail.
+    $receipt = move_receipt($db, 'visitor', $submissionId, '', $receiptRequest);
+    if ($receipt !== null) respond_json(200, $receipt);
+    if ($action === 'receipt') respond_json(404, ['ok'=>false,'code'=>'receipt_missing']);
+    if ($action !== 'submit') respond_json(400, ['ok'=>false,'code'=>'action_invalid']);
+    if ($turnstileToken === '') respond_json(400, ['ok'=>false,'error'=>'CAPTCHA token missing','code'=>'captcha_missing']);
+    $turnstileResult = verify_turnstile($turnstileToken);
+    if ($turnstileResult['success'] !== true) {
+        log_event('visitor_move_captcha_fail', [
+            'ip' => client_ip(),
+            'errors' => implode(',', $turnstileResult['errors'] ?? []),
+        ]);
+        respond_json(400, [
+            'ok' => false,
+            'error' => 'CAPTCHA verification failed',
+            'turnstile_errors' => $turnstileResult['errors'],
+            'code' => 'captcha_failed',
+        ]);
+    }
     begin_write_transaction($db);
+    // A concurrent copy may have committed while CAPTCHA was being checked.
+    $receipt = move_receipt($db, 'visitor', $submissionId, '', $receiptRequest);
+    if ($receipt !== null) { $db->rollBack(); respond_json(200, $receipt); }
 
     // The client must identify the exact current game, never a timestamp match.
     $stmt = $db->prepare("SELECT id,host_color,host_color AS you_color,visitor_color,turn_color,status,pgn,fen,revision,updated_at
@@ -188,8 +194,9 @@ try {
         record_detected_result($db, $game, $currentStatus);
         $completionExpiry = default_host_token_expiry();
         $completionToken = insert_host_move_token($db, (int)$game['id'], $completionExpiry, 'next_game');
+        $notificationId = enqueue_host_notification($db, (int)$game['id'], $completionToken);
         $db->commit();
-        send_host_turn_email((int)$game['id'], $completionToken, $completionExpiry, $game['last_move_san'] ?? 'Game finished');
+        try_dispatch_notification($db, $notificationId);
         respond_json(409, [
             'ok' => false,
             'error' => 'Game is over. Waiting for next game.',
@@ -273,6 +280,7 @@ try {
         record_detected_result($db, $game, $newStatus);
     }
     $hostToken = insert_host_move_token($db, (int)$game['id'], $expiresAt, $isOver ? 'next_game' : 'your_move');
+    $notificationId = enqueue_host_notification($db, (int)$game['id'], $hostToken);
 
     // Fetch the updated state for the response.
     $stateStmt = $db->prepare("
@@ -284,10 +292,12 @@ try {
     $stateStmt->execute([':id' => $game['id']]);
     $updatedGame = $stateStmt->fetch(PDO::FETCH_ASSOC);
 
-    $db->commit();
-
     $updatedGame['id'] = (int)$updatedGame['id'];
     $updatedGame['revision'] = (int)$updatedGame['revision'];
+    $response = ['ok'=>true, 'game'=>$updatedGame, 'message'=>'Move accepted. Waiting for host.'];
+    save_move_receipt($db, 'visitor', $submissionId, '', $receiptRequest, $response);
+    $db->commit();
+    $response['notification'] = try_dispatch_notification($db, $notificationId);
 
     log_event('visitor_move_commit', [
         'game_id' => $updatedGame['id'],
@@ -297,23 +307,10 @@ try {
         'status' => $isOver ? 'finished' : 'active',
     ]);
 
-    // Email host the single-use link. DB changes are already committed.
-    $emailResult = send_host_turn_email((int)$updatedGame['id'], $hostToken, $expiresAt, $lastMoveSan);
-    if (($emailResult['ok'] ?? false) !== true) {
-        $warning = $emailResult['warning'] ?? 'Email failed';
-    }
-
-    $response = [
-        'ok' => true,
-        'game' => $updatedGame,
-        'message' => 'Move accepted. Waiting for host.',
-    ];
-
-    if ($warning !== null) {
-        $response['warning'] = $warning;
-    }
-
     respond_json(200, $response);
+} catch (Phase4MigrationRequired $e) {
+    log_event('phase4_migration_required');
+    respond_json(503, ['ok'=>false, 'error'=>'Game updates are temporarily unavailable. Please try again later.', 'code'=>'maintenance']);
 } catch (ChessStateException $e) {
     if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
     respond_json($e->httpStatus, ['ok' => false, 'error' => $e->getMessage(), 'code' => $e->responseCode]);

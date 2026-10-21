@@ -74,17 +74,17 @@ def main():
                             if scenario == 'engine_failure_retry':
                                 (fixture.app/'data/node-runtime').write_text('/nonexistent/synthetic-node')
                                 before = fixture.snapshot()
-                                with page.expect_response(lambda response: response.url == api) as answer:
+                                with page.expect_response(lambda response: response.url == api and response.request.post_data_json.get('action','submit') == 'submit') as answer:
                                     page.locator('#btnSubmit').click()
-                                assert answer.value.status == 503
+                                assert answer.value.status == 503, 'engine failure must return 503'
                                 page.wait_for_function("document.querySelector('#statusMsg').textContent.includes('No move was saved')")
-                                assert before == fixture.snapshot()
-                                assert len(fixture.mailbox()) == 0
+                                assert before == fixture.snapshot(), 'failed engine changed database rows'
+                                assert len(fixture.mailbox()) == 0, 'failed engine sent email'
                                 (fixture.app/'data/node-runtime').unlink()
                                 if actor == 'visitor': page.evaluate("window.onTurnstileSuccess('synthetic')")
-                            with page.expect_response(lambda response: response.url == api) as answer:
+                            with page.expect_response(lambda response: response.url == api and response.request.post_data_json.get('action','submit') == 'submit') as answer:
                                 page.locator('#btnSubmit').click()
-                            assert answer.value.status == 200
+                            assert answer.value.status == 200, 'retry did not return 200'
                             if scenario == 'checkmate':
                                 if actor == 'host': page.locator('#btnNextGame').wait_for(state='visible')
                                 else: page.wait_for_function("document.querySelector('#gameOverBanner').classList.contains('show')")
@@ -102,7 +102,7 @@ def main():
                                     assert transition.value.status == 200
                                     page.wait_for_url('**/index.php')
                                     assert len(fixture.execute('SELECT * FROM game_transitions')) == 1
-                                assert len(fixture.mailbox()) == 1
+                                assert len(fixture.mailbox()) == (2 if actor == 'host' else 1)
                             assert not errors
                             passed += 1
                             print(f'PASS {actor} {scenario} at {width}×{height}', flush=True)

@@ -288,8 +288,10 @@ if (!empty($preloadedGame['visitor_color'])) {
   <script src="assets/board_id_map.js"></script>
   <!-- PGN review module extracted to packages/pgn-review for reuse. -->
   <script src="assets/chess.min.js"></script>
+  <script src="assets/submission.js"></script>
   <script>
     (() => {
+      const submissions = window.ChessSubmission('api/visitor_move.php', 'chess-visitor-submission');
       // Test protocol (promotion refresh safety):
       // 1) Make a promotion-eligible move and leave the chooser open.
       // 2) Trigger a server refresh (wait for poll or click Refresh).
@@ -894,6 +896,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function onSquareClick(opaqueSquareId) {
+        if (submissions.pending || submitting) return;
         if (!state) return;
         if (historyState && !isHistoryLiveView()) {
           setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
@@ -1058,7 +1061,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         btnRefresh.disabled = isSubmitting;
         btnBannerRefresh.disabled = isSubmitting;
         statusSpinner.classList.toggle('show', isSubmitting);
-        if (!isSubmitting && pendingMove && !selectionIsStale) {
+        if (!isSubmitting && (submissions.pending || (pendingMove && !selectionIsStale))) {
           btnSubmit.disabled = false;
         }
         if (historyState && !isHistoryLiveView()) {
@@ -2001,6 +2004,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           setStatus('Loading…', 'muted', { showSpinner: true });
         }
 
+        const recovered = !submitting ? await submissions.recover() : null;
         const res = await fetch('api/state.php', { cache: 'no-store' });
         if (!res.ok) throw new Error('Failed to load state');
         const json = await res.json();
@@ -2010,6 +2014,12 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
 
         handleIncomingState(json, { resetSelection, allowQueue });
+        if (submissions.pending && !submitting) {
+          setStatus('Previous move outcome unconfirmed. Submit move to retry safely.', 'error');
+          btnSubmit.disabled = false;
+        } else if (recovered) {
+          setStatus('Move accepted. Current board refreshed.', 'ok');
+        }
       }
 
       function handleStateError(err) {
@@ -2111,6 +2121,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       btnSubmit.addEventListener('click', async () => {
+        if (submitting) return;
+        if (submissions.pending) { await sendVisitorMove(submissions.pending); return; }
         if (!pendingMove || !state) return;
         if (historyState && !isHistoryLiveView()) {
           setStatus('Reviewing history — click Live to return before submitting a move.', 'error');
@@ -2141,70 +2153,35 @@ if (!empty($preloadedGame['visitor_color'])) {
           return;
         }
 
+        await sendVisitorMove({from:pendingMove.from, to:pendingMove.to,
+          promotion:pendingMove.requiresPromotion ? pendingMove.promotion : '',
+          game_id:state.id, expected_revision:state.revision});
+      });
+
+      async function sendVisitorMove(payload) {
         clearErrors();
         setSubmittingState(true);
         setStatus('Submitting…', 'muted', { showSpinner: true });
-
         try {
-          const res = await fetch('api/visitor_move.php', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              last_move_san: pendingMove.san,
-              from: pendingMove.from,
-              to: pendingMove.to,
-              promotion: pendingMove && pendingMove.requiresPromotion ? pendingMove.promotion : '',
-              game_id: state.id,
-              expected_revision: state.revision,
-              turnstile_token: turnstileToken
-            })
-          });
-
-          let json = {};
-          try {
-            json = await res.json();
-          } catch (parseErr) {
-            json = {};
+          const recovered = await submissions.recover();
+          if (!recovered) {
+            if (!ensureTokenPresent()) { setSubmittingState(false); return; }
+            await submissions.send(payload, {turnstile_token:turnstileToken});
           }
-
-          const readableErrors = [];
-          if (json && typeof json === 'object') {
-            if (json.error) readableErrors.push(String(json.error));
-            if (json.turnstile_errors) {
-              if (Array.isArray(json.turnstile_errors)) {
-                json.turnstile_errors.forEach((msg) => readableErrors.push(String(msg)));
-              } else {
-                readableErrors.push(String(json.turnstile_errors));
-              }
-            }
-          }
-
-          if (!res.ok || json.error) {
-            const errorMessage = readableErrors.length ? readableErrors[0] : 'Move rejected';
-            const displayErrors = readableErrors.length ? readableErrors : [errorMessage];
-            showErrors(displayErrors);
-            throw new Error(errorMessage);
-          }
-
-          setStatus('Move accepted. Waiting on host.', 'ok');
-          pendingMove = null;
-          pendingBaseFen = null;
-          resetPromotionChooser();
-          resetTurnstile();
-
-          await fetchState();
-
         } catch (err) {
-          setStatus(err.message || 'Move rejected', 'error');
+          setStatus(err.message || 'Outcome unconfirmed. Retry Submit move to check.', 'error');
           resetTurnstile();
           setSubmittingState(false);
           return;
         }
-
+        pendingMove = null;
+        pendingBaseFen = null;
+        resetPromotionChooser();
+        resetTurnstile();
         setSubmittingState(false);
-      });
+        try { await fetchState(); }
+        catch (_) { setStatus('Move accepted. Board refresh failed; use Refresh to reload it.', 'ok'); }
+      }
 
       if (toggleNotationBtn) {
         toggleNotationBtn.addEventListener('click', () => {

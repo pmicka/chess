@@ -9,7 +9,7 @@ if (!in_array('--new', $argv, true)) {
  *
  * Intent:
  * - Refuse existing files; never reconstruct missing production state.
- * - Create the initial schema/game, then install Phase 2 with a zero baseline.
+ * - Create the initial schema/game, then install the current schema with a zero score baseline.
  *
  * Tables (typical):
  * - games: current game state (FEN/PGN/turn/status), and host color for that game
@@ -100,3 +100,4 @@ if ((int)$row['count'] === 0) {
 
 require_once __DIR__ . '/lib/score.php';
 migrate_phase2($db, score_defaults());
+migrate_phase4($db);

@@ -220,6 +220,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
   <script src="assets/ui_helpers.js"></script>
   <script src="assets/board_id_map.js"></script>
   <script src="assets/chess.min.js"></script>
+  <script src="assets/submission.js"></script>
   <script>
     window.HOST_TOKEN = <?php echo json_encode($tokenValue); ?>;
     window.INITIAL_TOKEN_VALID = <?php echo $tokenIsValid ? 'true' : 'false'; ?>;
@@ -228,6 +229,8 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
   </script>
   <script>
     (() => {
+      const submissions = window.ChessSubmission('api/my_move_submit.php');
+      let submitting = false;
       // Test protocol (promotion refresh safety):
       // 1) Start a promotion move and leave the chooser open.
       // 2) Click Refresh to pull new server state.
@@ -803,6 +806,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       }
 
       function onSquareClick(opaqueSquareId) {
+        if (submissions.pending || submitting) return;
         statusMsg.textContent = '';
         if (!state) return;
 
@@ -1206,6 +1210,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
               throw err;
             }
             enterExpiredLinkState(friendlyMessage);
+            confirmHostAction();
           } finally {
             btnRefresh.disabled = false;
             stateLoadPromise = null;
@@ -1229,6 +1234,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       resetPromotionChooser();
 
       btnSubmit.addEventListener('click', async () => {
+        if (submitting) return;
         if (!hostToken) {
           setStatus('Missing token. Please use the link from your email.', 'error');
           return;
@@ -1237,11 +1243,12 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
           setStatus('Game is over. Start the next game.', 'error');
           return;
         }
-        if (!pendingMove || !state) return;
+        if ((!pendingMove && !submissions.pending) || !state) return;
+        submitting = true;
         btnSubmit.disabled = true;
         setStatus('Submitting…', 'muted', { showSpinner: true });
 
-        const payload = {
+        const payload = submissions.pending || {
           from: pendingMove.from,
           to: pendingMove.to,
           promotion: pendingMove && pendingMove.requiresPromotion ? pendingMove.promotion : '',
@@ -1252,16 +1259,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
         };
 
         try {
-          const res = await fetch('api/my_move_submit.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-
-          const json = await res.json();
-          if (!res.ok || json.error) {
-            throw new Error(json.error || 'Move rejected');
-          }
+          const json = await submissions.send(payload, {token:hostToken});
 
           const successMessage = json.message || 'Move accepted. Visitors may move now.';
           pendingBaseFen = null;
@@ -1276,7 +1274,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
           setStatus(err.message || 'Move rejected', 'error');
           btnSubmit.disabled = false;
           setInteractionEnabled(true);
-        }
+        } finally { submitting = false; }
       });
 
       btnCopyLink.addEventListener('click', async () => {
@@ -1334,6 +1332,27 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       btnResend.addEventListener('click', () => resendLink(btnResend, resendStatus));
       if (btnResendExpired && resendStatusExpired) {
         btnResendExpired.addEventListener('click', () => resendLink(btnResendExpired, resendStatusExpired));
+      }
+
+      // Read-only public confirmation: never restore a spent credential's board.
+      async function confirmHostAction() {
+        if (!hostToken) return;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        try {
+          const response = await fetch('api/my_move_submit.php', {method:'POST', cache:'no-store',
+            headers:{'Content-Type':'application/json'}, signal:controller.signal,
+            body:JSON.stringify({action:'receipt', token:hostToken})});
+          const receipt = response.ok ? await response.json() : null;
+          if (receipt?.ok === true && expiredMessage) {
+            expiredMessage.textContent = receipt.new_game_id
+              ? 'Next game already created. Return to the public board.'
+              : receipt.completion_required
+                ? 'Your move was accepted. Open the completion email to start the next game.'
+                : 'Your move was accepted. Visitors may move now. Return to the public board.';
+          }
+        } catch (_) { /* Keep the existing unavailable-link message. */ }
+        finally { clearTimeout(timeout); }
       }
 
       async function startNextGame() {
@@ -1401,6 +1420,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       } else {
         const unavailableMessage = initialTokenMessage || 'This host link is invalid or expired. Please request a new one.';
         enterExpiredLinkState(unavailableMessage);
+        confirmHostAction();
       }
     })();
   </script>
