@@ -2,8 +2,8 @@
 """Phase 1 HTTP regressions. Only a private temporary application is served.
 
 Run: PHP_BIN=php python3 tests/host_authorization.py
-Requires Python's standard library and PHP 8+ with pdo_sqlite and ctype.
-Native mail/shell execution are disabled before PHP loads any application code.
+Requires Python's standard library, PHP 8+ with pdo_sqlite, and Node.js.
+Native mail/shell execution are disabled; chess validation uses the real local engine.
 """
 
 import hashlib
@@ -50,7 +50,8 @@ class HostAuthorization(unittest.TestCase):
             ).decode().split("\0")
             # Include runtime helpers/CLI tools from an uncommitted implementation.
             for directory in ('lib', 'scripts'):
-                for source in (ROOT / directory).glob('*.php'):
+                for source in (ROOT / directory).iterdir():
+                    if source.suffix not in ('.php', '.js'): continue
                     name = str(source.relative_to(ROOT))
                     if name not in tracked: tracked.append(name)
             for name in tracked:
@@ -69,6 +70,8 @@ define('CANONICAL_CHESS_BASE', 'https://example.invalid/chess');
 define('TURNSTILE_SITE_KEY', 'synthetic-site');
 define('TURNSTILE_SECRET_KEY', 'synthetic-secret');
 define('ADMIN_RESET_KEY', 'synthetic-admin-not-used');
+define('CHESS_NODE_BINARY', is_file(__DIR__ . '/data/node-runtime')
+    ? trim(file_get_contents(__DIR__ . '/data/node-runtime')) : 'node');
 """)
             cls.bootstrap = cls.app / "test-bootstrap.php"
             cls.bootstrap.write_text("""<?php
@@ -83,12 +86,7 @@ function mail($to, $subject, $message, $headers = '', $params = '') {
     return $mode !== 'fail';
 }
 function shell_exec($command) {
-    if (is_file(__DIR__ . '/data/delay-status')) usleep(150000);
-    $parts = explode(chr(39), $command);
-    $fen = $parts[count($parts) - 2] ?? '';
-    $byFen = json_decode(@file_get_contents(__DIR__ . '/data/status-by-fen.json') ?: '{}', true);
-    return isset($byFen[$fen]) ? json_encode($byFen[$fen])
-        : (@file_get_contents(__DIR__ . '/data/status.json') ?: json_encode(['over' => false, 'reason' => null, 'winner' => null]));
+    throw new RuntimeException('Unexpected legacy shell execution');
 }
 // No request made by this suite may reach an external service.
 foreach (['http', 'https'] as $scheme) {
@@ -164,7 +162,7 @@ stream_wrapper_register('https', 'SyntheticTurnstile');
         self.execute("INSERT INTO games (id,host_color,visitor_color,turn_color,status,fen,pgn) "
                      "VALUES (1,'white','black','white','active',?,'')", (START_FEN,))
         self.execute("INSERT INTO locks (game_id,name) VALUES (1,'fixture-lock')")
-        for name in ("resend_throttle.json", "mailbox.jsonl", "application.log", "status.json", "status-by-fen.json", "delay-status"):
+        for name in ("resend_throttle.json", "mailbox.jsonl", "application.log", "node-runtime"):
             (self.app / "data" / name).unlink(missing_ok=True)
         (self.app / "data/mail-mode").write_text("accept")
         self.score = b'{"host_wins":3,"world_wins":2,"draws":1,"last_counted_game_id":0}'

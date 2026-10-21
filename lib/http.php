@@ -139,7 +139,8 @@ function clean_string($value, int $maxLength = 255): string
  */
 function clean_square($value): string
 {
-    $sq = strtolower(clean_string($value, 2));
+    // Do not truncate malformed input such as "e2garbage" into a valid square.
+    $sq = is_string($value) ? strtolower(trim($value)) : '';
     if (preg_match('/^[a-h][1-8]$/', $sq) !== 1) {
         return '';
     }

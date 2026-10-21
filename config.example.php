@@ -24,6 +24,10 @@ const GOOGLE_SITE_VERIFICATION = '';
 // Path to the SQLite database file (kept in writable data/).
 const DB_PATH = __DIR__ . '/data/chess.sqlite';
 
+// Optional: absolute Node executable path if the web user's PATH lacks node.
+// Define this in config.local.php; proc_open() must be enabled for validation.
+// const CHESS_NODE_BINARY = '/usr/bin/node';
+
 // From address used when emailing host tokens.
 const MAIL_FROM = 'chess@example.com';
 

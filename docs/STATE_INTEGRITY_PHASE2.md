@@ -1,5 +1,9 @@
 # Phase 2: database, revision, transition, and token invariants
 
+Phase 3 supersedes the legality/SAN and shell-execution statements below; see
+[CHESS_VALIDATION_PHASE3.md](CHESS_VALIDATION_PHASE3.md). Phase 2 migration,
+credential revocation, score preservation, and rollback requirements still apply.
+
 This phase builds on Phase 1. It does not deploy itself or modify a database on
 an ordinary request. Existing installations require an explicit CLI migration.
 No production database, token, game, score, or email was used during development.

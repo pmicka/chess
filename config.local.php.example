@@ -30,6 +30,9 @@ if (!defined('DB_PATH')) {
     define('DB_PATH', __DIR__ . '/data/chess.sqlite');
 }
 
+// Optional absolute executable path if the web user's PATH lacks Node.js.
+// define('CHESS_NODE_BINARY', '/usr/bin/node');
+
 if (!defined('MAIL_FROM')) {
     define('MAIL_FROM', 'chess@example.com');
 }
