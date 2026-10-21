@@ -22,6 +22,7 @@ if (!file_exists(__DIR__ . '/config.php')) {
     throw new RuntimeException('Missing config.php. Copy config.example.php to config.php and fill in your values.');
 }
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/lib/schema.php';
 
 // Ensure required constants exist so the rest of the app can rely on them.
 $requiredConstants = [
@@ -92,7 +93,7 @@ function resolve_db_path_info(): array
     $configured = DB_PATH;
 
     // Anchor relative paths to the project root (this file's directory).
-    $isAbsolute = preg_match('/^(?:\/|[A-Za-z]:[\\\/])/', $configured) === 1;
+    $isAbsolute = database_path_is_absolute($configured);
     $anchored = $isAbsolute
         ? $configured
         : rtrim(__DIR__, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . ltrim($configured, DIRECTORY_SEPARATOR);
@@ -106,6 +107,7 @@ function resolve_db_path_info(): array
     $dirWritable = $dirExists ? is_writable($dir) : false;
 
     return [
+        'legacy_candidate' => $isAbsolute ? __DIR__ . '/' . ltrim($configured, '/\\') : null,
         'configured' => $configured,
         'anchored' => $anchored,
         'dir_anchored' => $dir,
@@ -174,50 +176,76 @@ function log_db_path_info(string $context): array
 /**
  * Returns a shared PDO connection to the SQLite database.
  */
-function get_db(): PDO
+function database_path_is_absolute(string $path): bool
+{
+    return $path !== '' && ($path[0] === '/' || $path[0] === chr(92)
+        || (strlen($path) > 2 && ctype_alpha($path[0]) && $path[1] === ':'
+            && in_array($path[2], ['/', chr(92)], true)));
+}
+
+function open_existing_database(string $path, bool $readOnly = false): PDO
+{
+    // SQLite URI modes prevent accidental creation even if a file disappears.
+    $escaped = str_replace(['%', '?', '#'], ['%25', '%3F', '%23'], $path);
+    $db = new PDO('sqlite:file:' . $escaped . '?mode=' . ($readOnly ? 'ro' : 'rw'));
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $db->exec('PRAGMA foreign_keys=ON');
+    $db->exec('PRAGMA busy_timeout=2000');
+    return $db;
+}
+
+function get_db(bool $create = false): PDO
 {
     static $pdo = null;
-    if ($pdo instanceof PDO) {
-        return $pdo;
+    if ($pdo instanceof PDO) return $pdo;
+    $info = resolve_db_path_info();
+    $legacy = $info['legacy_candidate'];
+    if ($legacy && is_file($legacy) && realpath($legacy) !== realpath($info['anchored'])) {
+        throw new RuntimeException('Legacy database path detected. Select the verified file explicitly; refusing to create or switch databases.');
     }
-
-    $dbInfo = resolve_db_path_info();
-    $dbPath = $dbInfo['realpath'] ?? $dbInfo['anchored'];
-    $dbDir = dirname($dbPath);
-
-    if (!is_dir($dbDir)) {
-        if (!@mkdir($dbDir, 0755, true) && !is_dir($dbDir)) {
-            throw new RuntimeException("DB directory missing and could not be created: {$dbDir}");
-        }
+    if (!$info['exists'] && !$create) {
+        throw new RuntimeException('Configured database is missing. Verify its path; runtime will not create a replacement.');
     }
-
-    if (!is_writable($dbDir)) {
-        $perms = fileperms($dbDir);
-        $permOctal = $perms !== false ? substr(sprintf('%o', $perms), -4) : 'n/a';
-        $ownerId = @fileowner($dbDir);
-        $groupId = @filegroup($dbDir);
-        $owner = 'n/a';
-        if ($ownerId !== false) {
-            $ownerDetails = function_exists('posix_getpwuid') ? posix_getpwuid($ownerId) : null;
-            $owner = $ownerDetails['name'] ?? (string)$ownerId;
-        }
-        $group = 'n/a';
-        if ($groupId !== false) {
-            $groupDetails = function_exists('posix_getgrgid') ? posix_getgrgid($groupId) : null;
-            $group = $groupDetails['name'] ?? (string)$groupId;
-        }
-        throw new RuntimeException("DB directory is not writable: {$dbDir} (perms={$permOctal}, owner={$owner}, group={$group})");
+    ensure_db_path_ready($create);
+    $path = $info['realpath'] ?? $info['anchored'];
+    if ($create) {
+        if ($info['exists']) throw new RuntimeException('Database already exists; refusing initialization.');
+        $previousMask = umask(0077);
+        try { $file = @fopen($path, 'x'); } finally { umask($previousMask); }
+        if (!$file) throw new RuntimeException('Cannot exclusively create a new database.');
+        fclose($file);
+        $pdo = open_existing_database($path);
+    } else {
+        $pdo = open_existing_database($path);
     }
-
-    try {
-        $pdo = new PDO('sqlite:' . $dbPath);
-    } catch (PDOException $e) {
-        throw new RuntimeException("SQLite open failed at {$dbPath} (dir: {$dbDir}): " . $e->getMessage(), 0, $e);
+    if (!$create && !phase2_installed($pdo)) {
+        $pdo = null;
+        throw new RuntimeException('Phase 2 migration required. Runtime schema changes are disabled.');
     }
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-    $pdo->exec('PRAGMA foreign_keys = ON');
-
     return $pdo;
+}
+
+/** Reserve the writer before reading state, while retaining PDO rollback tracking. */
+function begin_write_transaction(PDO $db): void
+{
+    $db->beginTransaction();
+    try {
+        $db->exec('UPDATE app_meta SET schema_version=schema_version WHERE id=1');
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    }
+}
+
+function database_busy(Throwable $e): bool
+{
+    return $e instanceof PDOException && in_array((int)($e->errorInfo[1] ?? 0), [5, 6], true);
+}
+
+function revoke_game_tokens(PDO $db, int $gameId): void
+{
+    $db->prepare('UPDATE tokens SET revoked_at=CURRENT_TIMESTAMP WHERE game_id=? AND revoked_at IS NULL')
+        ->execute([$gameId]);
 }
 
 /**
@@ -251,15 +279,9 @@ function default_host_token_expiry(): DateTimeImmutable
  */
 function token_expiry_from_row(PDO $db, array $row): ?DateTimeImmutable
 {
-    if (!empty($row['created_at'])) {
-        try {
-            return datetime_utc($row['created_at'])->add(new DateInterval('PT2H'));
-        } catch (Exception $e) {
-            return null;
-        }
-    }
-
-    return null;
+    $text = (string)($row['expires_at'] ?? '');
+    $expiry = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', $text, new DateTimeZone('UTC'));
+    return $expiry && $expiry->format('Y-m-d H:i:s') === $text ? $expiry : null;
 }
 
 /**
@@ -267,19 +289,19 @@ function token_expiry_from_row(PDO $db, array $row): ?DateTimeImmutable
  *
  * Returns the generated token string.
  */
-function insert_host_move_token(PDO $db, int $gameId, DateTimeImmutable $expiresAt): string
+function insert_host_move_token(PDO $db, int $gameId, DateTimeImmutable $expiresAt, string $purpose = 'your_move'): string
 {
+    if (!$db->inTransaction()) throw new RuntimeException('Token issuance requires a transaction.');
+    $stmt = $db->prepare('SELECT revision,status,host_color,turn_color FROM games WHERE id=?');
+    $stmt->execute([$gameId]);
+    $game = $stmt->fetch(PDO::FETCH_ASSOC);
+    $eligible = $purpose === 'your_move'
+        ? $game && $game['status'] === 'active' && $game['host_color'] === $game['turn_color']
+        : $purpose === 'next_game' && $game && $game['status'] === 'finished';
+    if (!$eligible) throw new RuntimeException('No eligible host action for this game.');
     $token = generate_token_value();
-    $stmt = $db->prepare("
-        INSERT INTO tokens (game_id, token, purpose, used, created_at)
-        VALUES (:game_id, :token, :purpose, 0, CURRENT_TIMESTAMP)
-    ");
-    $stmt->execute([
-        ':game_id' => $gameId,
-        ':token' => $token,
-        ':purpose' => 'your_move',
-    ]);
-
+    $db->prepare("INSERT INTO tokens(game_id,token,purpose,used,game_revision,expires_at)
+        VALUES(?,?,?,0,?,?)")->execute([$gameId, $token, $purpose, $game['revision'], $expiresAt->format('Y-m-d H:i:s')]);
     return $token;
 }
 
@@ -287,7 +309,7 @@ function insert_host_move_token(PDO $db, int $gameId, DateTimeImmutable $expires
  * Validate and return a host token row for "your_move" purpose.
  * Returns null if missing, expired, or already used.
  */
-function validate_host_token(PDO $db, string $tokenValue, bool $allowUsed = false, bool $allowExpired = false): array
+function validate_host_token(PDO $db, string $tokenValue, bool $allowUsed = false, bool $allowExpired = false, ?string $purpose = 'your_move'): array
 {
     $result = [
         'ok' => false,
@@ -303,7 +325,8 @@ function validate_host_token(PDO $db, string $tokenValue, bool $allowUsed = fals
     $stmt->execute([':token' => $tokenValue]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if (!$row || ($row['purpose'] ?? '') !== 'your_move') {
+    if (!$row || !in_array($row['purpose'] ?? '', ['your_move', 'next_game'], true)
+        || ($purpose !== null && $row['purpose'] !== $purpose) || !empty($row['revoked_at'])) {
         $result['code'] = 'invalid';
         return $result;
     }
@@ -316,8 +339,17 @@ function validate_host_token(PDO $db, string $tokenValue, bool $allowUsed = fals
         $result['code'] = 'used';
     }
 
+    $gameStmt = $db->prepare('SELECT revision,status,host_color,turn_color,id=(SELECT MAX(id) FROM games) AS is_current FROM games WHERE id=?');
+    $gameStmt->execute([$row['game_id']]);
+    $boundGame = $gameStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$boundGame || !(int)$boundGame['is_current'] || $row['game_revision'] === null || (int)$row['game_revision'] !== (int)$boundGame['revision']
+        || ($row['purpose'] === 'your_move' && ($boundGame['status'] !== 'active' || $boundGame['host_color'] !== $boundGame['turn_color']))
+        || ($row['purpose'] === 'next_game' && $boundGame['status'] !== 'finished')) {
+        return ['ok' => false, 'code' => 'invalid', 'row' => null];
+    }
     $expiry = token_expiry_from_row($db, $row);
-    if ($expiry !== null && datetime_utc() >= $expiry) {
+    if ($expiry === null) return ['ok' => false, 'code' => 'invalid', 'row' => null];
+    if (datetime_utc() >= $expiry) {
         if (!$allowExpired) {
             $result['code'] = 'expired';
             return $result;
@@ -356,7 +388,8 @@ function fetch_valid_host_token_for_game(PDO $db, int $gameId): ?array
         FROM tokens
         WHERE game_id = :game_id
           AND purpose = 'your_move'
-          AND used = 0
+          AND used = 0 AND revoked_at IS NULL
+          AND game_revision = (SELECT revision FROM games WHERE id=:game_id)
         ORDER BY created_at DESC
         LIMIT 1
     ");
@@ -368,7 +401,7 @@ function fetch_valid_host_token_for_game(PDO $db, int $gameId): ?array
     }
 
     $expiry = token_expiry_from_row($db, $row);
-    if ($expiry !== null && datetime_utc() >= $expiry) {
+    if ($expiry === null || datetime_utc() >= $expiry) {
         return null;
     }
 
@@ -462,13 +495,14 @@ function detect_game_over_from_fen(string $fen): array
 }
 
 /**
- * Mark a game as finished and clear locks/tokens for that game.
+ * Mark a game finished, increment its revision, clear locks, and revoke tokens.
  */
 function finish_game(PDO $db, int $gameId): void
 {
-    $db->prepare("UPDATE games SET status = 'finished', updated_at = CURRENT_TIMESTAMP WHERE id = :id")
+    $db->prepare("UPDATE games SET status = 'finished', revision=revision+1, updated_at = CURRENT_TIMESTAMP WHERE id = :id AND status='active'")
         ->execute([':id' => $gameId]);
     $db->prepare('DELETE FROM locks WHERE game_id = :id')->execute([':id' => $gameId]);
+    revoke_game_tokens($db, $gameId);
 }
 
 /**

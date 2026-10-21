@@ -24,7 +24,7 @@ $requestId = admin_request_id();
 try {
     require_once __DIR__ . '/../db.php';
     log_db_path_info('admin_reset');
-    ensure_db_path_ready(true);
+    ensure_db_path_ready(false);
 } catch (Throwable $e) {
     respond_json(503, ['error' => $e->getMessage(), 'code' => 'config']);
 }
@@ -108,13 +108,13 @@ $db = null;
 
 try {
     $db = get_db();
-    $db->beginTransaction();
+    begin_write_transaction($db);
 
     $initialFen = starting_fen();
     $hostColor = 'white';
     $visitorColor = 'black';
 
-    $gameStmt = $db->query("SELECT id FROM games WHERE status = 'active' ORDER BY updated_at DESC LIMIT 1");
+    $gameStmt = $db->query("SELECT id FROM games WHERE status = 'active' AND id=(SELECT MAX(id) FROM games) LIMIT 1");
     $gameRow = $gameStmt->fetch(PDO::FETCH_ASSOC);
 
     if ($gameRow) {
@@ -129,6 +129,7 @@ try {
                 fen = :fen,
                 pgn = '',
                 last_move_san = NULL,
+                revision = revision + 1,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = :id
         ");

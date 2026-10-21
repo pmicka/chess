@@ -1,5 +1,7 @@
 <?php
 header('X-Robots-Tag: noindex, nofollow', true);
+header('Cache-Control: no-store, private');
+header('Referrer-Policy: no-referrer');
 /**
  * Me vs the World Chess - Host Move Page (Token-Gated)
  *
@@ -23,15 +25,17 @@ header('X-Robots-Tag: noindex, nofollow', true);
  * - Ending a game starts a new one and flips host color for the next game.
  */
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/lib/http.php';
+require_once __DIR__ . '/lib/host_recovery.php';
 require_once __DIR__ . '/lib/score.php';
 
 log_db_path_info('my_move.php');
 
 $tokenValue = '';
 if (isset($_GET['token'])) {
-    $tokenValue = trim((string)$_GET['token']);
+    $tokenValue = clean_string($_GET['token'], 256);
 } elseif (isset($_GET['t'])) {
-    $tokenValue = trim((string)$_GET['t']);
+    $tokenValue = clean_string($_GET['t'], 256);
 }
 $db = null;
 try {
@@ -41,7 +45,7 @@ try {
     echo 'Database unavailable: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
     exit;
 }
-$tokenValidation = validate_host_token($db, $tokenValue, false, false);
+$tokenValidation = validate_host_token($db, $tokenValue, false, false, null);
 $tokenRow = (($tokenValidation['ok'] ?? false) && ($tokenValidation['code'] ?? '') === 'ok') ? ($tokenValidation['row'] ?? null) : null;
 
 if ($tokenRow) {
@@ -51,42 +55,19 @@ if ($tokenRow) {
 
     if (!$gameRow) {
         $tokenRow = null;
-    }
-}
-
-if (!$tokenRow) {
-    $latestGameStmt = $db->query("
-        SELECT id, host_color, turn_color, status
-        FROM games
-        WHERE status = 'active'
-        ORDER BY updated_at DESC
-        LIMIT 1
-    ");
-    $latestGame = $latestGameStmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($latestGame && ($latestGame['status'] ?? '') === 'active' && $latestGame['turn_color'] === $latestGame['host_color']) {
-        $freshTokenInfo = ensure_host_move_token($db, (int)$latestGame['id']);
-        if (!empty($freshTokenInfo['token']) && $freshTokenInfo['token'] !== $tokenValue) {
-            $params = [
-                'token' => $freshTokenInfo['token'],
-                'fresh' => '1',
-            ];
-            header('Location: ' . canonical_chess_base() . '/my_move.php?' . http_build_query($params));
-            exit;
-        }
+        $tokenValidation = ['ok' => false, 'code' => 'invalid'];
     }
 }
 
 $tokenStatusCode = $tokenValidation['code'] ?? 'missing';
-$tokenIsValid = (($tokenValidation['ok'] ?? false) && $tokenStatusCode === 'ok');
+$tokenIsValid = $tokenRow !== null;
+$recoveryAvailable = (validate_host_recovery_token($db, $tokenValue)['ok'] ?? false) === true;
 
-$tokenUnavailableMessage = 'This link is invalid or expired. Click “Resend link to my email” to request a new one.';
+$tokenUnavailableMessage = 'This link is unavailable. Open your latest host email. If no usable link remains, contact the site operator; resetting the game is not required.';
 if ($tokenStatusCode === 'used') {
-    $tokenUnavailableMessage = 'This link was already used. Click “Resend link to my email” to get a new one.';
-} elseif ($tokenStatusCode === 'expired') {
-    $tokenUnavailableMessage = 'This link has expired. Click “Resend link to my email” to request a fresh link.';
-} elseif ($tokenStatusCode === 'invalid' || $tokenStatusCode === 'missing') {
-    $tokenUnavailableMessage = 'This link is invalid. Click “Resend link to my email” to request a new one.';
+    $tokenUnavailableMessage = 'This link was already used and cannot request recovery. Open your latest host email or contact the site operator.';
+} elseif ($tokenStatusCode === 'expired' && $recoveryAvailable) {
+    $tokenUnavailableMessage = 'This link has expired. Click “Resend link to my email” to receive a replacement for this game. Open the new email to continue.';
 }
 
 $tokenExpiresDisplay = ($tokenRow && $tokenRow['expires_at_dt'] instanceof DateTimeInterface)
@@ -136,9 +117,6 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
 <body>
   <div class="wrap">
     <h1>Host Move</h1>
-    <?php if (isset($_GET['fresh']) && $_GET['fresh'] === '1'): ?>
-      <p class="ok">Issued a fresh link for your current turn.</p>
-    <?php endif; ?>
     <p id="errorBanner" class="error" style="display:none;"></p>
     <p class="subhead">
       You play <strong id="hostColorLabel">white</strong>. Visitors play <strong id="visitorColorLabel">black</strong>.
@@ -161,7 +139,7 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       <h2 id="expiredTitle">Host link unavailable</h2>
       <p id="expiredMessage"><?php echo htmlspecialchars($tokenUnavailableMessage, ENT_QUOTES, 'UTF-8'); ?></p>
       <div class="controls">
-        <button id="btnResendExpired" type="button">Resend link to my email</button>
+        <button id="btnResendExpired" type="button" <?php echo $recoveryAvailable ? '' : 'disabled'; ?>>Resend link to my email</button>
         <a class="button-link secondary" href="index.php">Return to game</a>
         <span id="resendStatusExpired" class="muted"></span>
       </div>
@@ -367,6 +345,9 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
       function stateFingerprint(obj) {
         if (!obj) return null;
         return [
+          obj.id ?? '',
+          obj.revision ?? '',
+          obj.status ?? '',
           obj.updated_at ?? '',
           obj.fen ?? '',
           obj.turn_color ?? '',
@@ -1266,7 +1247,8 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
           promotion: pendingMove && pendingMove.requiresPromotion ? pendingMove.promotion : '',
           move: pendingMove.san,
           token: hostToken,
-          last_known_updated_at: lastUpdatedTs,
+          game_id: state.id,
+          expected_revision: state.revision,
         };
 
         try {
@@ -1285,7 +1267,11 @@ $socialImageUrl = 'https://patrickmicka.com/chess/assets/og-chess-v1.png';
           pendingBaseFen = null;
           selectionStateFingerprint = null;
           resetPromotionChooser();
-          enterCompletionState(successMessage);
+          if (json.next_game_token) {
+            window.location.replace(`my_move.php?token=${encodeURIComponent(json.next_game_token)}`);
+          } else {
+            enterCompletionState(successMessage);
+          }
         } catch (err) {
           setStatus(err.message || 'Move rejected', 'error');
           btnSubmit.disabled = false;

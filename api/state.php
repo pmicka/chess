@@ -53,7 +53,7 @@ $tokenValid = false;
 if ($tokenProvided && $tokenValue === '') {
     error_log(sprintf(
         'state.php auth token_present=1 valid=0 code=missing path=%s',
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
+        request_log_path()
     ));
     respond_json(401, [
         'ok' => false,
@@ -63,7 +63,7 @@ if ($tokenProvided && $tokenValue === '') {
 }
 
 if ($tokenValue !== '') {
-    $validation = validate_host_token($db, $tokenValue, true, false);
+    $validation = validate_host_token($db, $tokenValue, false, false, null);
     $tokenStatus = $validation['code'] ?? 'unknown';
     $tokenValid = ($validation['ok'] ?? false) === true;
 
@@ -72,7 +72,7 @@ if ($tokenValue !== '') {
         error_log(sprintf(
             'state.php auth token_present=1 valid=0 code=%s path=%s',
             $tokenStatus,
-            $_SERVER['REQUEST_URI'] ?? 'n/a'
+            request_log_path()
         ));
         respond_json($httpCode, [
             'ok' => false,
@@ -86,19 +86,19 @@ if ($tokenValue !== '') {
     error_log(sprintf(
         'state.php auth token_present=1 valid=1 code=%s path=%s',
         $tokenStatus,
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
+        request_log_path()
     ));
 } else {
     error_log(sprintf(
         'state.php auth token_present=0 valid=0 code=%s path=%s',
         $tokenStatus,
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
+        request_log_path()
     ));
 }
 
 if ($tokenGameId !== null) {
     $stmt = $db->prepare("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, revision, updated_at
         FROM games
         WHERE id = :id
         LIMIT 1
@@ -107,9 +107,9 @@ if ($tokenGameId !== null) {
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
 } else {
     $stmt = $db->query("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, revision, updated_at
         FROM games
-        ORDER BY updated_at DESC, id DESC
+        ORDER BY id DESC
         LIMIT 1
     ");
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -145,6 +145,7 @@ $scoreLineText = sprintf(
 $response = [
     'ok' => true,
     'id' => (int)$game['id'],
+    'revision' => (int)$game['revision'],
     'fen' => $fen,
     'turn' => $turn,
     'turn_color' => $turnColor,

@@ -27,10 +27,13 @@
 
 header('X-Robots-Tag: noindex, nofollow', true);
 header('Content-Type: application/json');
+header('Referrer-Policy: no-referrer');
 require_once __DIR__ . '/../lib/http.php';
+require_once __DIR__ . '/../lib/host_recovery.php';
 
 try {
     require_once __DIR__ . '/../db.php';
+    require_once __DIR__ . '/../lib/score.php';
 } catch (Throwable $e) {
     respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
 }
@@ -58,7 +61,7 @@ function enforce_resend_cooldown(int $gameId, int $cooldownSeconds = 60): array
 
     $fp = @fopen($path, 'c+');
     if ($fp === false) {
-        return ['ok' => true];
+        return ['ok' => false, 'unavailable' => true];
     }
 
     $now = time();
@@ -66,10 +69,19 @@ function enforce_resend_cooldown(int $gameId, int $cooldownSeconds = 60): array
 
     if (flock($fp, LOCK_EX)) {
         $raw = stream_get_contents($fp);
-        if ($raw !== false && strlen($raw) > 0) {
+        if ($raw === false) {
+            flock($fp, LOCK_UN);
+            fclose($fp);
+            return ['ok' => false, 'unavailable' => true];
+        }
+        if (strlen($raw) > 0) {
             $decoded = json_decode($raw, true);
             if (is_array($decoded)) {
                 $data = $decoded;
+            } else {
+                flock($fp, LOCK_UN);
+                fclose($fp);
+                return ['ok' => false, 'unavailable' => true];
             }
         }
 
@@ -85,9 +97,17 @@ function enforce_resend_cooldown(int $gameId, int $cooldownSeconds = 60): array
 
         $data[$key] = ['ts' => $now];
         rewind($fp);
-        ftruncate($fp, 0);
-        fwrite($fp, json_encode($data));
+        $encoded = json_encode($data);
+        $saved = $encoded !== false && ftruncate($fp, 0)
+            && fwrite($fp, $encoded) === strlen($encoded) && fflush($fp);
         flock($fp, LOCK_UN);
+        if (!$saved) {
+            fclose($fp);
+            return ['ok' => false, 'unavailable' => true];
+        }
+    } else {
+        fclose($fp);
+        return ['ok' => false, 'unavailable' => true];
     }
 
     fclose($fp);
@@ -100,13 +120,14 @@ $from = clean_square($data['from'] ?? '');
 $to = clean_square($data['to'] ?? '');
 $promotion = clean_promotion($data['promotion'] ?? '');
 $move = clean_string($data['move'] ?? '', 32);
-$lastKnownUpdatedAt = clean_string($data['last_known_updated_at'] ?? '', 64);
+$gameId = clean_nonnegative_int($data['game_id'] ?? null);
+$expectedRevision = clean_nonnegative_int($data['expected_revision'] ?? null);
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     respond_json(400, ['ok' => false, 'error' => 'FEN/PGN are server-managed. Submit coordinates only.', 'code' => 'server_managed_fields']);
 }
 
-if ($tokenValue === '' && $action !== 'resend') {
+if ($tokenValue === '') {
     respond_json(401, ['ok' => false, 'error' => 'Token missing', 'code' => 'AUTH_MISSING']);
 }
 
@@ -116,47 +137,29 @@ try {
     $db = get_db();
 
     if ($action === 'resend') {
-        $db->beginTransaction();
+        begin_write_transaction($db);
 
-        $tokenRow = null;
-        if ($tokenValue !== '') {
-            $validation = validate_host_token($db, $tokenValue, true, true);
-            if (($validation['ok'] ?? false) === true && isset($validation['row'])) {
-                $tokenRow = $validation['row'];
-            }
-        }
-
-        $game = null;
-        if ($tokenRow) {
-            $stmt = $db->prepare("
-                SELECT id, host_color, visitor_color, turn_color, status, last_move_san
-                FROM games
-                WHERE id = :id
-                LIMIT 1
-            ");
-            $stmt->execute([':id' => $tokenRow['game_id']]);
-            $game = $stmt->fetch(PDO::FETCH_ASSOC);
-        }
-
-        if (!$game || ($game['status'] ?? '') !== 'active' || ($game['turn_color'] ?? null) !== ($game['host_color'] ?? null)) {
-            $fallback = $db->query("
-                SELECT id, host_color, visitor_color, turn_color, status, last_move_san
-                FROM games
-                WHERE status = 'active' AND host_color = turn_color
-                ORDER BY updated_at DESC
-                LIMIT 1
-            ");
-            $game = $fallback->fetch(PDO::FETCH_ASSOC);
-        }
-
-        if (!$game) {
+        $validation = validate_host_recovery_token($db, $tokenValue);
+        if (($validation['ok'] ?? false) !== true) {
             $db->rollBack();
-            respond_json(400, ['ok' => false, 'error' => 'No active host turn available.', 'code' => 'host_turn_missing']);
+            $expired = ($validation['code'] ?? '') === 'expired';
+            respond_json($expired ? 410 : 403, [
+                'ok' => false,
+                'error' => 'This link cannot request recovery. Open your latest host email or contact the site operator.',
+                'code' => $expired ? 'AUTH_EXPIRED' : 'AUTH_INVALID',
+            ]);
         }
+        $game = $validation['game'];
 
         $cooldown = enforce_resend_cooldown((int)$game['id'], 60);
         if (($cooldown['ok'] ?? false) !== true) {
             $db->rollBack();
+            if (!empty($cooldown['unavailable'])) {
+                respond_json(503, [
+                    'ok' => false, 'error' => 'Link recovery is temporarily unavailable.',
+                    'code' => 'resend_unavailable',
+                ]);
+            }
             $remaining = isset($cooldown['remaining']) ? (int)$cooldown['remaining'] : 60;
             $message = sprintf('Please wait %ds before requesting another link.', $remaining);
             respond_json(429, [
@@ -169,7 +172,7 @@ try {
         }
 
         $expiry = default_host_token_expiry();
-        $freshToken = insert_host_move_token($db, (int)$game['id'], $expiry);
+        $freshToken = insert_host_move_token($db, (int)$game['id'], $expiry, $validation['row']['purpose']);
 
         $db->commit();
 
@@ -177,8 +180,7 @@ try {
 
         $response = [
             'ok' => ($emailResult['ok'] ?? false) === true,
-            'token' => $freshToken,
-            'message' => ($emailResult['ok'] ?? false) === true ? 'Sent.' : 'Email failed.',
+            'message' => ($emailResult['ok'] ?? false) === true ? 'Link emailed. Open the new email to continue.' : 'Email failed.',
             'code' => ($emailResult['ok'] ?? false) === true ? 'sent' : 'email_failed',
         ];
 
@@ -190,7 +192,7 @@ try {
         respond_json($statusCode, $response);
     }
 
-    $db->beginTransaction();
+    begin_write_transaction($db);
 
     $validation = validate_host_token($db, $tokenValue);
     if (($validation['ok'] ?? false) !== true) {
@@ -200,7 +202,7 @@ try {
         error_log(sprintf(
             'my_move_submit auth token_present=1 valid=0 code=%s path=%s',
             $code,
-            $_SERVER['REQUEST_URI'] ?? 'n/a'
+            request_log_path()
         ));
         log_event('host_move_auth_fail', [
             'token_suffix' => token_suffix($tokenValue),
@@ -217,12 +219,12 @@ try {
     error_log(sprintf(
         'my_move_submit auth token_present=1 valid=1 code=%s path=%s',
         $validation['code'] ?? 'ok',
-        $_SERVER['REQUEST_URI'] ?? 'n/a'
+        request_log_path()
     ));
 
-    if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
+    if ($from === '' || $to === '' || $gameId === null || $gameId < 1 || $expectedRevision === null) {
         $db->rollBack();
-        respond_json(400, ['ok' => false, 'error' => 'Missing required fields (from, to, last_known_updated_at).', 'code' => 'missing_fields']);
+        respond_json(400, ['ok' => false, 'error' => 'Missing required fields (from, to, game_id, expected_revision).', 'code' => 'missing_fields']);
     }
 
     if ($move === '') {
@@ -237,7 +239,7 @@ try {
     }
 
     $stmt = $db->prepare("
-        SELECT id, host_color, visitor_color, turn_color, status, pgn, fen, updated_at
+        SELECT id, host_color, visitor_color, turn_color, status, pgn, fen, revision, updated_at
         FROM games
         WHERE id = :id
         LIMIT 1
@@ -251,10 +253,23 @@ try {
         respond_json(400, ['ok' => false, 'error' => 'No active game found.', 'code' => 'game_missing']);
     }
 
+    if ((int)$game['id'] !== $gameId || (int)$game['revision'] !== $expectedRevision) {
+        $db->rollBack();
+        respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
+    }
+
     $currentStatus = detect_game_over_from_fen($game['fen']);
-    if (($game['status'] ?? '') !== 'active' || (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false))) {
+    if (($game['status'] ?? '') !== 'active') {
+        $db->rollBack();
+        respond_json(409, ['ok' => false, 'error' => 'Game is over.', 'code' => 'GAME_OVER']);
+    }
+    if (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false)) {
         finish_game($db, (int)$game['id']);
+        record_detected_result($db, $game, $currentStatus);
+        $completionExpiry = default_host_token_expiry();
+        $completionToken = insert_host_move_token($db, (int)$game['id'], $completionExpiry, 'next_game');
         $db->commit();
+        send_host_turn_email((int)$game['id'], $completionToken, $completionExpiry, $game['last_move_san'] ?? 'Game finished');
         respond_json(409, ['ok' => false, 'error' => 'Game is over. Waiting for next game.', 'code' => 'GAME_OVER']);
     }
 
@@ -278,10 +293,6 @@ try {
         isset($game['fen']) ? strlen((string)$game['fen']) : 0
     ));
 
-    if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
-        $db->rollBack();
-        respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
-    }
 
     try {
         $newFen = apply_move_to_fen($game['fen'], $from, $to, $promotion, $game['turn_color']);
@@ -307,8 +318,9 @@ try {
             last_move_san = :move,
             turn_color = CASE host_color WHEN 'white' THEN 'black' ELSE 'white' END,
             status = :status,
+            revision = revision + 1,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = :id
+        WHERE id = :id AND revision = :expected_revision
     ");
 
     $update->execute([
@@ -317,7 +329,9 @@ try {
         ':move' => $move,
         ':status' => $isOver ? 'finished' : 'active',
         ':id' => $game['id'],
+        ':expected_revision' => $expectedRevision,
     ]);
+    if ($update->rowCount() !== 1) throw new RuntimeException('Revision conflict during move update.');
 
     $markUsed = $db->prepare("
         UPDATE tokens
@@ -325,6 +339,12 @@ try {
         WHERE token = :token
     ");
     $markUsed->execute([':token' => $tokenValue]);
+    revoke_game_tokens($db, (int)$game['id']);
+    $nextGameToken = null;
+    if ($isOver) {
+        record_detected_result($db, $game, $newStatus);
+        $nextGameToken = insert_host_move_token($db, (int)$game['id'], default_host_token_expiry(), 'next_game');
+    }
 
     // Clear visitor move lock so the next visitor turn can acquire it.
     $db->prepare("DELETE FROM locks WHERE game_id = :id")->execute([':id' => $game['id']]);
@@ -350,8 +370,16 @@ try {
         'ok' => true,
         'game_id' => (int)$game['id'],
         'next_turn' => $nextTurn,
+        'revision' => $expectedRevision + 1,
+        'next_game_token' => $nextGameToken,
         'message' => 'Move accepted. Visitors may move now.',
     ]);
+} catch (PDOException $e) {
+    if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
+    log_event('database_write_error', ['busy' => database_busy($e) ? 1 : 0]);
+    if (database_busy($e)) header('Retry-After: 1');
+    respond_json(database_busy($e) ? 503 : 500, ['ok' => false, 'error' => 'Database write unavailable. Retry after refreshing.',
+        'code' => database_busy($e) ? 'database_busy' : 'database_error']);
 } catch (RuntimeException $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();

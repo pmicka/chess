@@ -36,7 +36,7 @@ try {
     $stmt = $db->query("
         SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
         FROM games
-        ORDER BY updated_at DESC, id DESC
+        ORDER BY id DESC
         LIMIT 1
     ");
     $preloadedGame = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
@@ -44,7 +44,7 @@ try {
     error_log('index.php preload_state_failed: ' . $e->getMessage());
 }
 
-$scoreTotals = score_load();
+try { $scoreTotals = score_load(); } catch (Throwable $e) { $scoreTotals = score_defaults(); }
 $baseUrl = defined('BASE_URL') ? trim((string)BASE_URL) : '';
 $canonicalUrl = 'https://patrickmicka.com/chess/';
 $googleVerification = defined('GOOGLE_SITE_VERIFICATION') ? trim((string)GOOGLE_SITE_VERIFICATION) : '';
@@ -867,6 +867,9 @@ if (!empty($preloadedGame['visitor_color'])) {
       function stateFingerprint(obj) {
         if (!obj) return null;
         return [
+          obj.id ?? '',
+          obj.revision ?? '',
+          obj.status ?? '',
           obj.updated_at ?? '',
           obj.fen ?? '',
           obj.turn_color ?? '',
@@ -2153,7 +2156,8 @@ if (!empty($preloadedGame['visitor_color'])) {
               from: pendingMove.from,
               to: pendingMove.to,
               promotion: pendingMove && pendingMove.requiresPromotion ? pendingMove.promotion : '',
-              last_known_updated_at: state.updated_at,
+              game_id: state.id,
+              expected_revision: state.revision,
               turnstile_token: turnstileToken
             })
           });
