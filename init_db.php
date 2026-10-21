@@ -1,11 +1,15 @@
 <?php
-header('X-Robots-Tag: noindex, nofollow', true);
+if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
+if (!in_array('--new', $argv, true)) {
+    fwrite(STDERR, "Use --new only for a verified new installation. Existing databases need scripts/migrate_phase2.php.\n");
+    exit(1);
+}
 /**
- * init_db.php — One-time database bootstrap (CLI-friendly)
+ * init_db.php — Explicit CLI bootstrap for a verified new installation only.
  *
  * Intent:
- * - Create required SQLite tables if they do not exist.
- * - Insert an initial active game if none exists.
+ * - Refuse existing files; never reconstruct missing production state.
+ * - Create the initial schema/game, then install Phase 2 with a zero baseline.
  *
  * Tables (typical):
  * - games: current game state (FEN/PGN/turn/status), and host color for that game
@@ -13,11 +17,11 @@ header('X-Robots-Tag: noindex, nofollow', true);
  * - locks: lightweight mechanism to ensure only one visitor move is accepted per turn
  *
  * Game rules enforced at a data level:
- * - There is exactly one "active" game at a time in MVP.
+ * - At most one game is active; a finished game awaits an explicit transition.
  * - Host color flips per new game (new game uses opposite host color from prior game).
  *
  * Usage:
- * - Run from shell: php init_db.php
+ * - Run from shell: php init_db.php --new
  * - Should print a clear success/failure message.
  */
 try {
@@ -28,8 +32,9 @@ try {
 }
 
 try {
+    if (resolve_db_path_info()['exists']) throw new RuntimeException('Database already exists; refusing initialization.');
     ensure_db_path_ready(true);
-    $db = get_db();
+    $db = get_db(true);
 } catch (Throwable $e) {
     fwrite(STDERR, "Database path error: " . $e->getMessage() . "\n");
     exit(1);
@@ -92,3 +97,6 @@ if ((int)$row['count'] === 0) {
 } else {
     echo "Database ready. Existing games found.\n";
 }
+
+require_once __DIR__ . '/lib/score.php';
+migrate_phase2($db, score_defaults());

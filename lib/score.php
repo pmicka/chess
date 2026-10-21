@@ -1,7 +1,5 @@
 <?php
 
-const SCORE_FILE_PATH = __DIR__ . '/../data/score.json';
-
 function score_defaults(): array
 {
     return [
@@ -12,17 +10,6 @@ function score_defaults(): array
         'last_counted_game_id' => 0,
         'updated_at' => null,
     ];
-}
-
-function score_file_path(): string
-{
-    $dir = dirname(SCORE_FILE_PATH);
-
-    if (!is_dir($dir)) {
-        @mkdir($dir, 0775, true);
-    }
-
-    return SCORE_FILE_PATH;
 }
 
 function score_normalize(array $data): array
@@ -52,102 +39,50 @@ function score_normalize(array $data): array
     return $normalized;
 }
 
-function score_load(): array
+/** SQLite baseline plus uniquely recorded results; the legacy JSON is untouched. */
+function score_load(?PDO $db = null): array
 {
-    $path = score_file_path();
-    $handle = @fopen($path, 'c+');
-
-    if ($handle === false) {
-        error_log('score_load open_failed path=' . $path);
-        return score_defaults();
+    $db = $db ?? get_db();
+    $score = $db->query('SELECT * FROM score_baseline WHERE id=1')->fetch(PDO::FETCH_ASSOC);
+    if (!$score) throw new RuntimeException('Score baseline missing.');
+    unset($score['id']);
+    foreach ($db->query('SELECT result,COUNT(*) AS total FROM game_results WHERE counted=1 GROUP BY result') as $row) {
+        $key = ['host' => 'host_wins', 'world' => 'world_wins', 'draw' => 'draws'][$row['result']];
+        $score[$key] = (int)$score[$key] + (int)$row['total'];
     }
-
-    $locked = flock($handle, LOCK_SH);
-    if (!$locked) {
-        fclose($handle);
-        error_log('score_load lock_failed path=' . $path);
-        return score_defaults();
+    $latest = $db->query('SELECT game_id,result,created_at FROM game_results WHERE counted=1 ORDER BY game_id DESC LIMIT 1')->fetch(PDO::FETCH_ASSOC);
+    if ($latest) {
+        $score['last_counted_game_id'] = max((int)$score['last_counted_game_id'], (int)$latest['game_id']);
+        $score['last_result'] = $latest['result'];
+        $score['updated_at'] = $latest['created_at'];
     }
-
-    clearstatcache(true, $path);
-    rewind($handle);
-    $contents = stream_get_contents($handle);
-    $decoded = json_decode((string)$contents, true);
-    if (!is_array($decoded)) {
-        error_log('score_load parse_failed path=' . $path);
-        $decoded = score_defaults();
-    }
-
-    flock($handle, LOCK_UN);
-    fclose($handle);
-
-    return score_normalize($decoded);
+    return score_normalize($score);
 }
 
-function score_save(array $score): void
+function score_increment(string $result, int $gameId, ?PDO $db = null): array
 {
-    $path = score_file_path();
-    $handle = @fopen($path, 'c+');
-
-    if ($handle === false) {
-        throw new RuntimeException('Failed to open score file for writing: ' . $path);
-    }
-
-    if (!flock($handle, LOCK_EX)) {
-        fclose($handle);
-        throw new RuntimeException('Failed to lock score file: ' . $path);
-    }
-
-    $now = new DateTimeImmutable('now', new DateTimeZone('UTC'));
-    $normalized = score_normalize($score);
-    $normalized['updated_at'] = $now->format('Y-m-d H:i:s');
-
-    $json = json_encode($normalized, JSON_PRETTY_PRINT);
-    if ($json === false) {
-        flock($handle, LOCK_UN);
-        fclose($handle);
-        throw new RuntimeException('Failed to encode score JSON.');
-    }
-
-    ftruncate($handle, 0);
-    rewind($handle);
-    fwrite($handle, $json);
-    fflush($handle);
-
-    flock($handle, LOCK_UN);
-    fclose($handle);
+    $db = $db ?? get_db();
+    if (!$db->inTransaction()) throw new RuntimeException('Result accounting requires the game transaction.');
+    if (!in_array($result, ['host', 'world', 'draw'], true)) throw new InvalidArgumentException('Invalid result.');
+    $cutoff = (int)$db->query('SELECT last_counted_game_id FROM score_baseline WHERE id=1')->fetchColumn();
+    $db->prepare('INSERT INTO game_results(game_id,result,counted) VALUES(?,?,?) ON CONFLICT(game_id) DO NOTHING')
+        ->execute([$gameId, $result, $gameId > $cutoff ? 1 : 0]);
+    $check = $db->prepare('SELECT result FROM game_results WHERE game_id=?');
+    $check->execute([$gameId]);
+    if ($check->fetchColumn() !== $result) throw new RuntimeException('Conflicting recorded result; manual review required.');
+    return score_load($db);
 }
 
-function score_increment(string $result, int $gameId): array
+function record_detected_result(PDO $db, array $game, array $status): void
 {
-    $valid = ['host', 'world', 'draw'];
-    if (!in_array($result, $valid, true)) {
-        throw new InvalidArgumentException('Invalid result: ' . $result);
-    }
-
-    $score = score_load();
-
-    if ($gameId <= ($score['last_counted_game_id'] ?? 0)) {
-        error_log(sprintf(
-            'score_increment skipped game_id=%d last_counted=%d',
-            $gameId,
-            $score['last_counted_game_id'] ?? 0
-        ));
-        return $score;
-    }
-
-    if ($result === 'host') {
-        $score['host_wins']++;
-    } elseif ($result === 'world') {
-        $score['world_wins']++;
+    if (empty($status['ok']) || empty($status['over'])) throw new RuntimeException('Cannot establish game result.');
+    $winner = $status['winner'] ?? null;
+    if (in_array($winner, ['w', 'b'], true)) {
+        $result = $winner === ($game['host_color'] === 'white' ? 'w' : 'b') ? 'host' : 'world';
+    } elseif (in_array($status['reason'] ?? '', ['draw', 'stalemate'], true)) {
+        $result = 'draw';
     } else {
-        $score['draws']++;
+        throw new RuntimeException('Cannot establish game result.');
     }
-
-    $score['last_result'] = $result;
-    $score['last_counted_game_id'] = $gameId;
-
-    score_save($score);
-
-    return $score;
+    score_increment($result, (int)$game['id'], $db);
 }

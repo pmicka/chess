@@ -34,7 +34,7 @@ log_db_path_info('health');
 $pathInfo = null;
 
 try {
-    $pathInfo = ensure_db_path_ready(true);
+    $pathInfo = ensure_db_path_ready(false);
 } catch (RuntimeException $e) {
     respond(503, [
         'ok' => false,

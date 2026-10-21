@@ -34,6 +34,7 @@ require_once __DIR__ . '/../lib/http.php';
 
 try {
     require_once __DIR__ . '/../db.php';
+    require_once __DIR__ . '/../lib/score.php';
 } catch (Throwable $e) {
     respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'config']);
 }
@@ -75,7 +76,8 @@ $from = clean_square($data['from'] ?? '');
 $to = clean_square($data['to'] ?? '');
 $promotion = clean_promotion($data['promotion'] ?? '');
 $lastMoveSan = clean_string($data['last_move_san'] ?? '', 32);
-$lastKnownUpdatedAt = clean_string($data['last_known_updated_at'] ?? '', 64);
+$gameId = clean_nonnegative_int($data['game_id'] ?? null);
+$expectedRevision = clean_nonnegative_int($data['expected_revision'] ?? null);
 
 if (isset($data['fen']) || isset($data['pgn'])) {
     respond_json(400, ['ok' => false, 'error' => 'FEN/PGN are server-managed. Submit coordinates only.', 'code' => 'server_managed_fields']);
@@ -85,8 +87,8 @@ if ($turnstileToken === '') {
     respond_json(400, ['ok' => false, 'error' => 'CAPTCHA token missing', 'code' => 'captcha_missing']);
 }
 
-if ($from === '' || $to === '' || $lastKnownUpdatedAt === '') {
-    respond_json(400, ['ok' => false, 'error' => 'Missing required fields (from, to, last_known_updated_at).', 'code' => 'missing_fields']);
+if ($from === '' || $to === '' || $gameId === null || $gameId < 1 || $expectedRevision === null) {
+    respond_json(400, ['ok' => false, 'error' => 'Missing required fields (from, to, game_id, expected_revision).', 'code' => 'missing_fields']);
 }
 
 $allowedPromotions = ['q', 'r', 'b', 'n'];
@@ -160,28 +162,33 @@ $warning = null;
 
 try {
     $db = get_db();
-    $db->beginTransaction();
+    begin_write_transaction($db);
 
-    // Load the latest active game.
-    $stmt = $db->query("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status, pgn, fen, updated_at
-        FROM games
-        WHERE status = 'active'
-        ORDER BY updated_at DESC
-        LIMIT 1
-    ");
+    // The client must identify the exact current game, never a timestamp match.
+    $stmt = $db->prepare("SELECT id,host_color,host_color AS you_color,visitor_color,turn_color,status,pgn,fen,revision,updated_at
+        FROM games WHERE id=? AND status='active' AND id=(SELECT MAX(id) FROM games)");
+    $stmt->execute([$gameId]);
     $game = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$game) {
         error_log('visitor_move game_found=0');
         $db->rollBack();
-        respond_json(400, ['ok' => false, 'error' => 'No active game found.', 'code' => 'game_missing']);
+        respond_json(409, ['ok' => false, 'error' => 'Requested game is no longer current and active.', 'code' => 'stale_state']);
+    }
+
+    if ((int)$game['id'] !== $gameId || (int)$game['revision'] !== $expectedRevision) {
+        $db->rollBack();
+        respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
     }
 
     $currentStatus = detect_game_over_from_fen($game['fen']);
     if (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false)) {
         finish_game($db, (int)$game['id']);
+        record_detected_result($db, $game, $currentStatus);
+        $completionExpiry = default_host_token_expiry();
+        $completionToken = insert_host_move_token($db, (int)$game['id'], $completionExpiry, 'next_game');
         $db->commit();
+        send_host_turn_email((int)$game['id'], $completionToken, $completionExpiry, $game['last_move_san'] ?? 'Game finished');
         respond_json(409, [
             'ok' => false,
             'error' => 'Game is over. Waiting for next game.',
@@ -194,10 +201,7 @@ try {
         respond_json(400, ['ok' => false, 'error' => 'It is not the visitor turn.', 'code' => 'turn_mismatch']);
     }
 
-    if ($lastKnownUpdatedAt === '' || $lastKnownUpdatedAt !== ($game['updated_at'] ?? '')) {
-        $db->rollBack();
-        respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
-    }
+
 
     log_event('visitor_move_attempt', [
         'ip' => client_ip(),
@@ -259,8 +263,9 @@ try {
             last_move_san = :last_move_san,
             turn_color = host_color,
             status = :status,
+            revision = revision + 1,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = :id
+        WHERE id = :id AND revision = :expected_revision
     ");
 
     $update->execute([
@@ -269,7 +274,9 @@ try {
         ':last_move_san' => $lastMoveSan,
         ':status' => $isOver ? 'finished' : 'active',
         ':id' => $game['id'],
+        ':expected_revision' => $expectedRevision,
     ]);
+    if ($update->rowCount() !== 1) throw new RuntimeException('Revision conflict during move update.');
 
     error_log(sprintf(
         'visitor_move write game=%d fen_len=%d',
@@ -277,19 +284,17 @@ try {
         strlen($newFen)
     ));
 
-    $hostToken = null;
-    $expiresAt = null;
-    if (!$isOver) {
-        $tokenInfo = ensure_host_move_token($db, (int)$game['id']);
-        $hostToken = $tokenInfo['token'];
-        $expiresAt = $tokenInfo['expires_at'];
-    } else {
-        $db->prepare('DELETE FROM locks WHERE game_id = :id')->execute([':id' => $game['id']]);
+    revoke_game_tokens($db, (int)$game['id']);
+    $expiresAt = default_host_token_expiry();
+    if ($isOver) {
+        $db->prepare('DELETE FROM locks WHERE game_id=?')->execute([$game['id']]);
+        record_detected_result($db, $game, $newStatus);
     }
+    $hostToken = insert_host_move_token($db, (int)$game['id'], $expiresAt, $isOver ? 'next_game' : 'your_move');
 
     // Fetch the updated state for the response.
     $stateStmt = $db->prepare("
-        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, updated_at
+        SELECT id, host_color AS you_color, visitor_color, turn_color, status, fen, pgn, last_move_san, revision, updated_at
         FROM games
         WHERE id = :id
         LIMIT 1
@@ -300,6 +305,7 @@ try {
     $db->commit();
 
     $updatedGame['id'] = (int)$updatedGame['id'];
+    $updatedGame['revision'] = (int)$updatedGame['revision'];
 
     log_event('visitor_move_commit', [
         'game_id' => $updatedGame['id'],
@@ -326,6 +332,12 @@ try {
     }
 
     respond_json(200, $response);
+} catch (PDOException $e) {
+    if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
+    log_event('database_write_error', ['busy' => database_busy($e) ? 1 : 0]);
+    if (database_busy($e)) header('Retry-After: 1');
+    respond_json(database_busy($e) ? 503 : 500, ['ok' => false, 'error' => 'Database write unavailable. Retry after refreshing.',
+        'code' => database_busy($e) ? 'database_busy' : 'database_error']);
 } catch (RuntimeException $e) {
     if ($db instanceof PDO && $db->inTransaction()) {
         $db->rollBack();

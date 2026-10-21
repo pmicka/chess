@@ -23,6 +23,15 @@ function request_id(): string
 }
 
 /**
+ * Return the request path for diagnostics, without any credential-bearing query.
+ */
+function request_log_path(): string
+{
+    $path = explode('?', $_SERVER['REQUEST_URI'] ?? 'n/a', 2)[0];
+    return preg_replace('/[\x00-\x20\x7f]/', '_', $path);
+}
+
+/**
  * Return an ISO-8601 timestamp for the current request lifecycle.
  */
 function request_timestamp(): string
@@ -146,3 +155,12 @@ function clean_promotion($value): string
     return in_array($piece, ['q', 'r', 'b', 'n'], true) ? $piece : '';
 }
 
+
+/** Strict integer preconditions, including form-encoded visitor requests. */
+function clean_nonnegative_int($value): ?int
+{
+    if (!is_int($value) && !is_string($value)) return null;
+    if (is_string($value) && preg_match('/^(0|[1-9][0-9]*)$/D', $value) !== 1) return null;
+    $number = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+    return $number === false ? null : $number;
+}
