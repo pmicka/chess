@@ -54,7 +54,7 @@ class StateIntegrity(auth.HostAuthorization):
                     with socket.create_connection(('127.0.0.1', port), timeout=.1): break
                 except OSError: time.sleep(.02)
             else: self.fail('Second isolated PHP worker did not start')
-            other = StateIntegrity()
+            other = type(self)()
             other.base = f'http://127.0.0.1:{port}/'
             yield other
         finally:
@@ -133,7 +133,6 @@ class StateIntegrity(auth.HostAuthorization):
 
     def test_concurrent_host_requests_commit_once(self):
         credential = self.token()
-        (self.app / 'data/delay-status').write_text('yes')
         payload = {'token': credential, 'from': 'e2', 'to': 'e4', 'move': 'e4', 'game_id': 1, 'expected_revision': 0}
         with self.second_worker() as other, concurrent.futures.ThreadPoolExecutor(2) as pool:
             futures = [pool.submit(client.request, 'api/my_move_submit.php', payload) for client in (self, other)]
@@ -143,7 +142,6 @@ class StateIntegrity(auth.HostAuthorization):
 
     def test_two_workers_visitor_conflict_is_deterministic(self):
         self.execute("UPDATE games SET host_color='black',visitor_color='white' WHERE id=1")
-        (self.app / 'data/delay-status').write_text('yes')
         payload = {'from': 'e2', 'to': 'e4', 'last_move_san': 'e4', 'game_id': 1,
                    'expected_revision': 0, 'turnstile_token': 'synthetic'}
         with self.second_worker() as other, concurrent.futures.ThreadPoolExecutor(2) as pool:
@@ -205,8 +203,9 @@ class StateIntegrity(auth.HostAuthorization):
         self.assert_unchanged(before)
 
     def finish_fixture(self):
-        self.execute("UPDATE games SET status='finished',revision=revision+1 WHERE id=1")
-        (self.app / 'data/status.json').write_text(json.dumps({'over': True, 'reason': 'checkmate', 'winner': 'w'}))
+        fen = '7k/6Q1/5K2/8/8/8/8/8 b - - 1 1'
+        pgn = f'[SetUp "1"]\n[FEN "{fen}"]\n\n*'
+        self.execute("UPDATE games SET status='finished',revision=revision+1,fen=?,pgn=?,turn_color='black' WHERE id=1", (fen, pgn))
         return self.token(purpose='next_game')
 
     def test_transition_replay_returns_same_successor_without_secret(self):
@@ -253,10 +252,8 @@ class StateIntegrity(auth.HostAuthorization):
 
     def test_host_terminal_move_returns_completion_authority_only_to_host(self):
         fen = 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2'
-        mate = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3'
         self.execute("UPDATE games SET host_color='black',visitor_color='white',turn_color='black',fen=?,pgn='1. f3 e5 2. g4'", (fen,))
         credential = self.token()
-        (self.app / 'data/status-by-fen.json').write_text(json.dumps({mate: {'over': True, 'reason': 'checkmate', 'winner': 'b'}}))
         response = self.move(credential, source='d8', target='h4', san='Qh4#')
         self.assertEqual(response[0], 200)
         completion = json.loads(response[1])['next_game_token']
@@ -268,10 +265,8 @@ class StateIntegrity(auth.HostAuthorization):
 
     def test_result_write_failure_rolls_back_terminal_move(self):
         fen = 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2'
-        mate = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3'
-        self.execute("UPDATE games SET host_color='black',visitor_color='white',turn_color='black',fen=?", (fen,))
+        self.execute("UPDATE games SET host_color='black',visitor_color='white',turn_color='black',fen=?,pgn='1. f3 e5 2. g4'", (fen,))
         credential = self.token()
-        (self.app / 'data/status-by-fen.json').write_text(json.dumps({mate: {'over': True, 'reason': 'checkmate', 'winner': 'b'}}))
         self.execute("CREATE TRIGGER reject_result BEFORE INSERT ON game_results BEGIN SELECT RAISE(ABORT,'synthetic failure'); END")
         before = self.snapshot()
         try:
@@ -302,7 +297,6 @@ class StateIntegrity(auth.HostAuthorization):
     def test_two_workers_transition_once_and_email_once(self):
         self.execute("UPDATE games SET host_color='black',visitor_color='white'")
         credential = self.finish_fixture()
-        (self.app / 'data/delay-status').write_text('yes')
         with self.second_worker() as other, concurrent.futures.ThreadPoolExecutor(2) as pool:
             responses = [f.result() for f in [pool.submit(client.request, 'api/host_next_game.php', {'token': credential})
                                              for client in (self, other)]]
@@ -315,16 +309,14 @@ class StateIntegrity(auth.HostAuthorization):
 
     def test_unknown_result_blocks_transition_without_mutation(self):
         credential = self.finish_fixture()
-        (self.app / 'data/status.json').write_text('{"over":false}')
+        self.execute("UPDATE games SET fen=?,pgn='',turn_color='white'", (START_FEN,))
         before = self.snapshot()
         self.assertEqual(self.request('api/host_next_game.php', {'token': credential})[0], 503)
         self.assert_unchanged(before)
 
     def test_visitor_terminal_move_gets_separate_completion_link(self):
         fen = 'rnbqkbnr/pppp1ppp/8/4p3/6P1/5P2/PPPPP2P/RNBQKBNR b KQkq g3 0 2'
-        mate = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3'
         self.execute("UPDATE games SET fen=?,pgn='1. f3 e5 2. g4',turn_color='black'", (fen,))
-        (self.app / 'data/status-by-fen.json').write_text(json.dumps({mate: {'over': True, 'reason': 'checkmate', 'winner': 'b'}}))
         self.assertEqual(self.visitor(source='d8', target='h4', san='Qh4#')[0], 200)
         self.assertEqual(self.execute('SELECT status,revision FROM games'), [{'status': 'finished', 'revision': 1}])
         self.assertEqual(self.execute('SELECT purpose FROM tokens'), [{'purpose': 'next_game'}])

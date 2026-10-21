@@ -39,7 +39,7 @@ try {
         }
         $known = $db->prepare('SELECT 1 FROM game_results WHERE game_id=?');
         $known->execute([$game['id']]);
-        if (!$known->fetchColumn()) record_detected_result($db, $game, detect_game_over_from_fen($game['fen']));
+        if (!$known->fetchColumn()) record_detected_result($db, $game, detect_game_over_from_fen($game['fen'], $game['pgn']));
         $db->prepare('UPDATE tokens SET used=1,used_at=CURRENT_TIMESTAMP WHERE id=?')->execute([$token['id']]);
         revoke_game_tokens($db, (int)$game['id']);
         $created = create_next_game($db, $game);

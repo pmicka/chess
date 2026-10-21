@@ -13,14 +13,10 @@
  * - It MUST be the visitors' turn.
  * - Concurrency control: only one submission can win for a given turn (lock).
  *
- * Data accepted (MVP):
- * - Updated FEN and PGN representing the move made client-side
- * - Move notation (SAN or coordinate)
- * - CAPTCHA token
- *
- * Security note (important):
- * - Client-side chess.js checks are not authoritative; malicious clients can bypass them.
- * - MVP enforces turn/locking/CAPTCHA; later hardening adds server-side move validation.
+ * Data accepted: coordinates, explicit promotion when needed, game/revision,
+ * and CAPTCHA token. Client notation is ignored; FEN/PGN inputs are rejected.
+ * The server verifies stored history against canonical FEN, then obtains legal
+ * move, SAN, FEN, turn and terminal status from the bundled chess.js engine.
  *
  * Side effects:
  * - Save updated state in games table
@@ -74,8 +70,8 @@ $turnstileToken = clean_string(
 );
 $from = clean_square($data['from'] ?? '');
 $to = clean_square($data['to'] ?? '');
-$promotion = clean_promotion($data['promotion'] ?? '');
-$lastMoveSan = clean_string($data['last_move_san'] ?? '', 32);
+$rawPromotion = array_key_exists('promotion', $data) ? $data['promotion'] : '';
+$promotion = is_string($rawPromotion) ? strtolower(trim($rawPromotion)) : null;
 $gameId = clean_nonnegative_int($data['game_id'] ?? null);
 $expectedRevision = clean_nonnegative_int($data['expected_revision'] ?? null);
 
@@ -92,7 +88,7 @@ if ($from === '' || $to === '' || $gameId === null || $gameId < 1 || $expectedRe
 }
 
 $allowedPromotions = ['q', 'r', 'b', 'n'];
-if ($promotion !== '' && !in_array($promotion, $allowedPromotions, true)) {
+if ($promotion === null || ($promotion !== '' && !in_array($promotion, $allowedPromotions, true))) {
     respond_json(400, ['ok' => false, 'error' => 'Invalid promotion piece. Use q, r, b, or n.', 'code' => 'promotion_invalid']);
 }
 
@@ -181,7 +177,12 @@ try {
         respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
     }
 
-    $currentStatus = detect_game_over_from_fen($game['fen']);
+    if ($game['turn_color'] !== $game['visitor_color']) {
+        $db->rollBack();
+        respond_json(400, ['ok' => false, 'error' => 'It is not the visitor turn.', 'code' => 'turn_mismatch']);
+    }
+    $validated = validate_game_move($game, $from, $to, $promotion);
+    $currentStatus = $validated['before'];
     if (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false)) {
         finish_game($db, (int)$game['id']);
         record_detected_result($db, $game, $currentStatus);
@@ -195,13 +196,6 @@ try {
             'code' => 'GAME_OVER',
         ]);
     }
-
-    if ($game['turn_color'] === $game['you_color']) {
-        $db->rollBack();
-        respond_json(400, ['ok' => false, 'error' => 'It is not the visitor turn.', 'code' => 'turn_mismatch']);
-    }
-
-
 
     log_event('visitor_move_attempt', [
         'ip' => client_ip(),
@@ -237,31 +231,18 @@ try {
         respond_json(409, ['ok' => false, 'error' => 'Move already accepted for this turn', 'code' => 'turn_locked']);
     }
 
-    try {
-        $newFen = apply_move_to_fen($game['fen'], $from, $to, $promotion, $game['turn_color']);
-    } catch (Throwable $e) {
-        $db->rollBack();
-        $msg = $e->getMessage();
-        $clientMessage = stripos((string)$msg, 'promotion') !== false ? $msg : 'Illegal move or invalid coordinates.';
-        respond_json(400, ['ok' => false, 'error' => $clientMessage, 'code' => 'illegal_move']);
-    }
+    $newFen = $validated['fen'];
+    $newPgn = $validated['pgn'];
+    $newStatus = $validated['after'];
+    $isOver = $newStatus['over'];
+    $lastMoveSan = $validated['move']['san'];
 
-    if ($lastMoveSan === '') {
-        $lastMoveSan = "{$from}-{$to}";
-    }
-
-    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['turn_color'], $lastMoveSan, $newFen);
-
-    $newStatus = detect_game_over_from_fen($newFen);
-    $isOver = ($newStatus['ok'] ?? false) && ($newStatus['over'] ?? false);
-
-    // Save visitor move and flip turn back to host (you_color).
     $update = $db->prepare("
         UPDATE games
         SET fen = :fen,
             pgn = :pgn,
             last_move_san = :last_move_san,
-            turn_color = host_color,
+            turn_color = :turn_color,
             status = :status,
             revision = revision + 1,
             updated_at = CURRENT_TIMESTAMP
@@ -272,6 +253,7 @@ try {
         ':fen' => $newFen,
         ':pgn' => $newPgn,
         ':last_move_san' => $lastMoveSan,
+        ':turn_color' => $validated['turn_color'],
         ':status' => $isOver ? 'finished' : 'active',
         ':id' => $game['id'],
         ':expected_revision' => $expectedRevision,
@@ -332,6 +314,13 @@ try {
     }
 
     respond_json(200, $response);
+} catch (ChessStateException $e) {
+    if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
+    respond_json($e->httpStatus, ['ok' => false, 'error' => $e->getMessage(), 'code' => $e->responseCode]);
+} catch (ChessEngineUnavailable $e) {
+    if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
+    log_event('chess_engine_unavailable');
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'chess_unavailable']);
 } catch (PDOException $e) {
     if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
     log_event('database_write_error', ['busy' => database_busy($e) ? 1 : 0]);

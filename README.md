@@ -4,7 +4,7 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 ## Requirements
 - PHP 8+ with `pdo_sqlite`, ctype, `openssl` (for `random_bytes`), JSON, and `mail()` enabled. No Composer or Node build steps.
 - SQLite 3.24+ writable by PHP. Default path: `data/chess.sqlite`; runtime opens only an existing, migrated file.
-- Node.js and enabled `shell_exec()` are existing runtime requirements for game-over detection using the bundled chess.js asset. The regression suites stub this subprocess; they do not verify hosting support.
+- Node.js 18+ (a maintained release recommended) and enabled `proc_open()` are required for authoritative move/status validation using the existing bundled chess.js asset. `shell_exec()` is no longer used. If needed, set `CHESS_NODE_BINARY` to the absolute executable path in `config.local.php`. The regression suites use the real local engine; shared-hosting support must still be verified under the web user.
 - Cloudflare Turnstile keys: `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are required for visitor move submission; without them, `/api/visitor_move.php` will reject requests.
 - Outgoing mail transport for PHP `mail()` so host links can be delivered to `YOUR_EMAIL`.
 - Web server capable of running PHP (built-in `php -S` works for local use).
@@ -92,5 +92,7 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 - Host tokens are single-use and tied to a specific game; admin reset tokens also return via authenticated calls.
 
 ## Contributing / dev workflow
-- Run `PHP_BIN=php python3 tests/state_integrity.py` for Phase 2 plus the Phase 1 authorization regressions, or `tests/host_authorization.py` for just authorization. Run `php -l` on modified PHP files. The suites use Python's standard library and PHP 8+ with PDO SQLite and ctype; no dependency upgrade is needed.
+- Run `node --test tests/chess_rules.test.js` and `PHP_BIN=php python3 tests/chess_legality.py` for Phase 3 plus all Phase 1/2 integration regressions. Run `php -l` on modified PHP files. Tests require Python's standard library, PHP 8+ with PDO SQLite, and Node.js; no dependency installation or upgrade is needed.
+- Optional existing-browser checks: `PHP_BIN=php CHROMIUM_BIN=/usr/bin/chromium python3 tests/browser_chess.py` (requires Playwright/Chromium already available).
+- Before deploying Phase 3, run its [read-only state check and deployment procedure](docs/CHESS_VALIDATION_PHASE3.md). No Phase 3 schema migration is required after Phase 2. Missing or divergent PGN blocks submissions for review; it is never rewritten automatically.
 - Use feature branches and pull requests as usual; there is no enforced branching convention in-repo.

@@ -11,14 +11,10 @@
  * - Game MUST be active and must match token's game_id.
  * - It MUST be the host's turn.
  *
- * Data accepted (MVP):
- * - token
- * - updated FEN/PGN
- * - move notation (SAN or coordinate)
- *
- * Optional behavior:
- * - "End game" action (later: checkmate/stalemate/resign) creates a new game
- *   and flips host color for the next game.
+ * Data accepted: token, coordinates, explicit promotion when needed, game/revision.
+ * Client notation is ignored; FEN/PGN inputs are rejected. The server validates
+ * legality and history, generates SAN/state, and records terminal results.
+ * A separate purpose-bound capability authorizes the next-game endpoint.
  *
  * Security:
  * - No CAPTCHA required here; the token is the gate.
@@ -118,8 +114,8 @@ $action = strtolower(clean_string($data['action'] ?? 'submit', 16)) ?: 'submit';
 $tokenValue = clean_string($data['token'] ?? '', 256);
 $from = clean_square($data['from'] ?? '');
 $to = clean_square($data['to'] ?? '');
-$promotion = clean_promotion($data['promotion'] ?? '');
-$move = clean_string($data['move'] ?? '', 32);
+$rawPromotion = array_key_exists('promotion', $data) ? $data['promotion'] : '';
+$promotion = is_string($rawPromotion) ? strtolower(trim($rawPromotion)) : null;
 $gameId = clean_nonnegative_int($data['game_id'] ?? null);
 $expectedRevision = clean_nonnegative_int($data['expected_revision'] ?? null);
 
@@ -227,13 +223,8 @@ try {
         respond_json(400, ['ok' => false, 'error' => 'Missing required fields (from, to, game_id, expected_revision).', 'code' => 'missing_fields']);
     }
 
-    if ($move === '') {
-        $db->rollBack();
-        respond_json(400, ['ok' => false, 'error' => 'Move notation is required.', 'code' => 'move_missing']);
-    }
-
     $allowedPromotions = ['q', 'r', 'b', 'n'];
-    if ($promotion !== '' && !in_array($promotion, $allowedPromotions, true)) {
+    if ($promotion === null || ($promotion !== '' && !in_array($promotion, $allowedPromotions, true))) {
         $db->rollBack();
         respond_json(400, ['ok' => false, 'error' => 'Invalid promotion piece. Use q, r, b, or n.', 'code' => 'promotion_invalid']);
     }
@@ -258,11 +249,12 @@ try {
         respond_json(409, ['ok' => false, 'error' => 'Server state changed. Refresh and try again.', 'code' => 'stale_state']);
     }
 
-    $currentStatus = detect_game_over_from_fen($game['fen']);
     if (($game['status'] ?? '') !== 'active') {
         $db->rollBack();
         respond_json(409, ['ok' => false, 'error' => 'Game is over.', 'code' => 'GAME_OVER']);
     }
+    $validated = validate_game_move($game, $from, $to, $promotion);
+    $currentStatus = $validated['before'];
     if (($currentStatus['ok'] ?? false) && ($currentStatus['over'] ?? false)) {
         finish_game($db, (int)$game['id']);
         record_detected_result($db, $game, $currentStatus);
@@ -294,29 +286,19 @@ try {
     ));
 
 
-    try {
-        $newFen = apply_move_to_fen($game['fen'], $from, $to, $promotion, $game['turn_color']);
-    } catch (Throwable $e) {
-        $db->rollBack();
-        $msg = $e->getMessage();
-        $clientMessage = stripos((string)$msg, 'promotion') !== false ? $msg : 'Illegal move or invalid coordinates.';
-        respond_json(400, ['ok' => false, 'error' => $clientMessage, 'code' => 'illegal_move']);
-    }
-
-    $newPgn = append_pgn_move($game['pgn'] ?? '', $game['host_color'], $move, $newFen);
-
-    // Flip turn to visitors after saving the host move.
-    $nextTurn = $game['host_color'] === 'white' ? 'black' : 'white';
-
-    $newStatus = detect_game_over_from_fen($newFen);
-    $isOver = ($newStatus['ok'] ?? false) && ($newStatus['over'] ?? false);
+    $newFen = $validated['fen'];
+    $newPgn = $validated['pgn'];
+    $newStatus = $validated['after'];
+    $isOver = $newStatus['over'];
+    $move = $validated['move']['san'];
+    $nextTurn = $validated['turn_color'];
 
     $update = $db->prepare("
         UPDATE games
         SET fen = :fen,
             pgn = :pgn,
             last_move_san = :move,
-            turn_color = CASE host_color WHEN 'white' THEN 'black' ELSE 'white' END,
+            turn_color = :turn_color,
             status = :status,
             revision = revision + 1,
             updated_at = CURRENT_TIMESTAMP
@@ -327,6 +309,7 @@ try {
         ':fen' => $newFen,
         ':pgn' => $newPgn,
         ':move' => $move,
+        ':turn_color' => $nextTurn,
         ':status' => $isOver ? 'finished' : 'active',
         ':id' => $game['id'],
         ':expected_revision' => $expectedRevision,
@@ -374,6 +357,13 @@ try {
         'next_game_token' => $nextGameToken,
         'message' => 'Move accepted. Visitors may move now.',
     ]);
+} catch (ChessStateException $e) {
+    if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
+    respond_json($e->httpStatus, ['ok' => false, 'error' => $e->getMessage(), 'code' => $e->responseCode]);
+} catch (ChessEngineUnavailable $e) {
+    if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
+    log_event('chess_engine_unavailable');
+    respond_json(503, ['ok' => false, 'error' => $e->getMessage(), 'code' => 'chess_unavailable']);
 } catch (PDOException $e) {
     if ($db instanceof PDO && $db->inTransaction()) $db->rollBack();
     log_event('database_write_error', ['busy' => database_busy($e) ? 1 : 0]);
