@@ -440,6 +440,78 @@ a:focus-visible {
   line-height: 1.1;
 }
 
+.board-stack .live-game-card {
+  order: 2;
+}
+
+.live-game-heading,
+.live-game-players {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.live-game-heading h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.live-game-heading > span,
+.live-game-players {
+  font-size: 13px;
+}
+
+.live-game-facts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px;
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.live-game-facts > div {
+  min-width: 0;
+}
+
+.live-game-facts dt,
+.live-score-heading {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.live-game-facts dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.live-game-card .score-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.live-game-card .score-item {
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 8px;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.live-game-card .score-item:nth-child(3) {
+  grid-column: auto;
+}
+
+.live-game-card .score-value {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
 .score-last {
   margin: 0;
   font-size: 13px;
@@ -543,6 +615,10 @@ a:focus-visible {
 
 .sq.last {
   box-shadow: inset 0 0 0 3px rgba(255, 215, 0, 0.75);
+}
+
+.sq.review-check {
+  background-image: radial-gradient(circle, rgba(255, 70, 70, 0.8), transparent 75%);
 }
 
 #board.locked .sq,
@@ -981,6 +1057,12 @@ textarea {
   display: flex;
   gap: var(--space-12);
   flex-wrap: wrap;
+}
+
+#btnFlip {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
 }
 
 .history-chip {
@@ -1431,11 +1513,22 @@ textarea {
     align-items: stretch;
   }
 
+  #btnFlip {
+    align-self: flex-start;
+  }
+
   .history-buttons {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
+  }
+
+  .history-buttons button {
+    min-width: 0;
+    min-height: 44px;
+    padding: 10px 4px;
+    font-size: 13px;
   }
 
   .history-chip {

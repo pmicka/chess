@@ -69,9 +69,13 @@ def main():
                             if actor=='host':page.wait_for_function("document.querySelector('#statusMsg').textContent==='Your turn.'")
                             else:page.wait_for_function("document.body.dataset.gameId==='1'")
                             page.locator('#board .sq').nth(52).click();page.locator('#board .sq').nth(36).click()
+                            if actor=='visitor':page.locator('#btnFlip').click()
                             if actor=='visitor':page.evaluate("window.onTurnstileSuccess('synthetic')")
                             page.locator('#btnSubmit').click()
                             page.wait_for_function("document.querySelector('#statusMsg').textContent.includes('Outcome unconfirmed')")
+                            if actor=='visitor':
+                                page.locator('#btnFlip').click()
+                                assert page.locator('#btnFlip').get_attribute('aria-pressed')=='false'
                             committed=scenario in ('lost_after_commit','malformed_after_commit','refresh_after_loss','refresh_button_after_loss')
                             assert fixture.execute('SELECT revision FROM games')[0]['revision']==int(committed), 'unexpected persistence'
                             if actor=='visitor':

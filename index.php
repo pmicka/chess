@@ -144,8 +144,21 @@ if (!empty($preloadedGame['visitor_color'])) {
             </div>
           </div>
         </div>
-        <div class="scoreboard" id="scoreboard" aria-label="Scoreboard">
-          <div class="score-grid">
+        <section class="scoreboard live-game-card" id="scoreboard" aria-labelledby="liveGameTitle">
+          <div class="live-game-heading">
+            <h2 id="liveGameTitle">Current game <span id="liveGameId"></span></h2>
+            <span id="liveGameStatus" class="muted">Loading…</span>
+          </div>
+          <div class="live-game-players" aria-label="Current game sides">
+            <span>Host · <strong id="liveHostColor">—</strong></span>
+            <span>World · <strong id="liveWorldColor">—</strong></span>
+          </div>
+          <dl class="live-game-facts">
+            <div><dt>Latest move</dt><dd id="liveLastMove">—</dd></div>
+            <div><dt>Last updated</dt><dd><time id="liveUpdatedAt">—</time></dd></div>
+          </dl>
+          <p class="live-score-heading muted">All-time score</p>
+          <div class="score-grid" role="group" aria-label="All-time score">
             <div class="score-item">
               <span class="score-label">Host</span>
               <span class="score-value" id="scoreHostValue">0</span>
@@ -160,7 +173,7 @@ if (!empty($preloadedGame['visitor_color'])) {
             </div>
           </div>
           <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
-        </div>
+        </section>
       </div>
       <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
         <div>
@@ -198,10 +211,12 @@ if (!empty($preloadedGame['visitor_color'])) {
         <div class="control-row review-row">
           <div class="history-controls">
             <div class="history-buttons">
+              <button id="btnStart" type="button" disabled>Start</button>
               <button id="btnBack" type="button">Back</button>
               <button id="btnForward" type="button">Forward</button>
               <button id="btnLive" type="button">Live</button>
             </div>
+            <button id="btnFlip" type="button" aria-pressed="false" disabled>Flip board</button>
             <span id="historyStatus" class="history-chip" aria-live="polite"></span>
           </div>
         </div>
@@ -343,6 +358,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       const gameOverTitle = document.getElementById('gameOverTitle');
       const gameOverBody = document.getElementById('gameOverBody');
       const gameOverRefresh = document.getElementById('gameOverRefresh');
+      const btnStart = document.getElementById('btnStart');
+      const btnFlip = document.getElementById('btnFlip');
       const btnBack = document.getElementById('btnBack');
       const btnForward = document.getElementById('btnForward');
       const btnLive = document.getElementById('btnLive');
@@ -358,6 +375,12 @@ if (!empty($preloadedGame['visitor_color'])) {
       const snapshotPlyEl = document.getElementById('snapshotPly');
       const snapshotLastMoveEl = document.getElementById('snapshotLastMove');
       const snapshotStatusEl = document.getElementById('snapshotStatus');
+      const liveGameId = document.getElementById('liveGameId');
+      const liveGameStatus = document.getElementById('liveGameStatus');
+      const liveHostColor = document.getElementById('liveHostColor');
+      const liveWorldColor = document.getElementById('liveWorldColor');
+      const liveLastMove = document.getElementById('liveLastMove');
+      const liveUpdatedAt = document.getElementById('liveUpdatedAt');
       const backToTopBtn = document.getElementById('backToTopButton');
       const prefersReducedMotion = (typeof window !== 'undefined' && window.matchMedia)
         ? window.matchMedia('(prefers-reduced-motion: reduce)')
@@ -378,6 +401,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       const VIEW_STATE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
       let state = null;
       let visitorColor = appConfig.orient || 'black';
+      // Display preference only: player ownership and move coordinates never depend on it.
+      let boardFlipped = false;
       let hostColor = visitorColor === 'white' ? 'black' : 'white';
       let selectedSquare = null;
       let pendingMove = null; // {from,to,promotion?,san,requiresPromotion?}
@@ -659,7 +684,10 @@ if (!empty($preloadedGame['visitor_color'])) {
       function renderBoard() {
         boardEl.innerHTML = '';
 
-        const layout = getOrientationLayout(visitorColor);
+        const displayOrientation = boardFlipped
+          ? (visitorColor === 'white' ? 'black' : 'white')
+          : visitorColor;
+        const layout = getOrientationLayout(displayOrientation);
         const files = layout.files;
         const ranks = layout.ranks;
 
@@ -781,6 +809,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           el.classList.remove('pick');
           el.classList.remove('hint');
           el.classList.remove('last');
+          el.classList.remove('review-check');
         });
 
         if (selectedSquare) {
@@ -799,6 +828,18 @@ if (!empty($preloadedGame['visitor_color'])) {
             const target = findSquareEl(lastMoveSquares[key]);
             if (target) target.classList.add('last');
           });
+        }
+        if (!isLiveMode() && game.in_check()) {
+          const checkedColor = game.turn();
+          for (const file of filesBase) {
+            for (let rank = 1; rank <= 8; rank++) {
+              const sq = `${file}${rank}`;
+              const piece = game.get(sq);
+              if (piece?.type === 'k' && piece.color === checkedColor) {
+                findSquareEl(sq)?.classList.add('review-check');
+              }
+            }
+          }
         }
       }
 
@@ -1014,6 +1055,24 @@ if (!empty($preloadedGame['visitor_color'])) {
         statusSpinner.classList.toggle('show', showSpinner);
       }
 
+      function renderLiveMetadata(currentState) {
+        if (!currentState) return;
+        const colorLabel = (color) => color === 'white' ? 'White' : color === 'black' ? 'Black' : '—';
+        liveGameId.textContent = currentState.id == null ? '' : `#${currentState.id}`;
+        liveHostColor.textContent = colorLabel(currentState.you_color);
+        liveWorldColor.textContent = colorLabel(currentState.visitor_color);
+        const status = currentState.status || 'Unknown';
+        const turn = colorLabel(currentState.turn_color);
+        liveGameStatus.textContent = status === 'active' ? `${turn} to move` : status;
+        liveLastMove.textContent = currentState.last_move_san || '—';
+        // SQLite timestamps are UTC; use an unambiguous machine-readable value.
+        const iso = normalizeTimestamp(currentState.updated_at);
+        liveUpdatedAt.textContent = formatHumanTimestamp(iso) || '—';
+        if (iso && Number.isFinite(Date.parse(iso))) liveUpdatedAt.setAttribute('datetime', iso);
+        else liveUpdatedAt.removeAttribute('datetime');
+        renderScoreboard(currentState.score);
+      }
+
       function renderScoreboard(scoreData) {
         if (!scoreboardEl || !scoreData || typeof scoreData !== 'object') return;
         const hostWins = Number.isFinite(Number(scoreData.host_wins)) ? Number(scoreData.host_wins) : 0;
@@ -1057,6 +1116,7 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       function setSubmittingState(isSubmitting) {
         submitting = isSubmitting;
+        if (btnFlip) btnFlip.disabled = isSubmitting || !state;
         btnSubmit.disabled = true;
         btnRefresh.disabled = isSubmitting;
         btnBannerRefresh.disabled = isSubmitting;
@@ -1069,8 +1129,16 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
+      function normalizeTimestamp(ts) {
+        const raw = String(ts || '').trim();
+        return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(raw)
+          ? `${raw.replace(' ', 'T')}Z` : raw;
+      }
+
       function formatHumanTimestamp(ts) {
-        const d = new Date(ts);
+        const normalized = normalizeTimestamp(ts);
+        if (!normalized) return '';
+        const d = new Date(normalized);
         if (Number.isNaN(d.getTime())) return '';
         return d.toLocaleString(undefined, {
           month: 'short',
@@ -1499,7 +1567,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const lastMoveSan = lastMove
           ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
           : '';
-        const lastMoveLine = buildLastMoveText(state, lastMoveSan);
+        const lastMoveLine = isLiveMode() ? buildLastMoveText(state, lastMoveSan) : lastMoveSan;
         const plyText = formatMoveCount(context.plyCount);
         if (snapshotPlyEl && snapshotRenderCache.ply !== plyText) {
           snapshotRenderCache.ply = plyText;
@@ -1511,9 +1579,13 @@ if (!empty($preloadedGame['visitor_color'])) {
           snapshotLastMoveEl.textContent = lastMoveText;
         }
         const toMove = context.chess.turn() === 'w' ? 'White' : 'Black';
-        const statusBits = [state?.status || 'active', `${toMove} to move`];
-        if (context.chess.in_check()) {
+        const statusBits = [isLiveMode() ? (state?.status || 'active') : 'Review position', `${toMove} to move`];
+        if (context.chess.in_checkmate()) {
+          statusBits.push('checkmate');
+        } else if (context.chess.in_check()) {
           statusBits.push('check');
+        } else if (context.chess.in_stalemate()) {
+          statusBits.push('stalemate');
         }
         const statusText = statusBits.join(' · ');
         if (snapshotStatusEl && snapshotRenderCache.status !== statusText) {
@@ -1543,7 +1615,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const seed = startFen ? new Chess(startFen) : new Chess();
         const baseTimeline = [seed.fen()];
         const rawMovetext = stripSafePgnNonMoveContent(movesPgn);
-        if (!rawMovetext) return { timeline: baseTimeline, historySans: [], normalizedPgn: '' };
+        if (!rawMovetext) return { timeline: baseTimeline, historySans: [], verboseMoves: [], normalizedPgn: '' };
 
         const attempts = [
           { label: 'raw', pgn: rawMovetext },
@@ -1564,14 +1636,17 @@ if (!empty($preloadedGame['visitor_color'])) {
             const historySans = parser.history();
             const replay = startFen ? new Chess(startFen) : new Chess();
             const timeline = [seed.fen()];
+            const verboseMoves = [];
             for (let idx = 0; idx < historySans.length; idx += 1) {
               const move = replay.move(historySans[idx], { sloppy: true });
               if (!move) throw new Error(`Illegal move at ply ${idx + 1}: ${historySans[idx]}`);
+              verboseMoves.push(move);
               timeline.push(replay.fen());
             }
             const candidate = {
               timeline,
               historySans,
+              verboseMoves,
               normalizedPgn: buildPgnFromSansMoves(historySans) || attempt.pgn,
               source: attempt.label,
             };
@@ -1620,6 +1695,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           historyState = {
             timeline,
             historySans: sans,
+            verboseMoves: historyBundle.verboseMoves,
             normalizedPgn: historyBundle?.normalizedPgn || fallbackPgn,
             liveIndex,
             idx: getSelectedHistoryIndex(),
@@ -1649,6 +1725,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       function updateHistoryUI() {
         const h = historyState;
         if (!h || !Array.isArray(h.timeline)) {
+          if (btnStart) btnStart.disabled = true;
           if (btnBack) btnBack.disabled = true;
           if (btnForward) btnForward.disabled = true;
           if (btnLive) btnLive.disabled = true;
@@ -1663,6 +1740,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const selectedIdx = getSelectedHistoryIndex();
         const isLive = isHistoryLiveView();
         historyState.idx = selectedIdx;
+        if (btnStart) btnStart.disabled = selectedIdx <= 0;
         if (btnBack) btnBack.disabled = selectedIdx <= 0;
         if (btnForward) btnForward.disabled = selectedIdx >= h.timeline.length - 1;
         if (btnLive) btnLive.disabled = isLive;
@@ -1680,6 +1758,10 @@ if (!empty($preloadedGame['visitor_color'])) {
         if (!isLive) {
           btnSubmit.disabled = true;
         }
+      }
+
+      function getSelectedHistoryMove() {
+        return historyState?.verboseMoves?.[getSelectedHistoryIndex() - 1] || null;
       }
 
       function renderHistoryPosition({ forceRender = false } = {}) {
@@ -1712,7 +1794,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           return;
         }
         clearSelection();
-        lastMoveSquares = isHistoryLiveView() ? deriveLastMoveSquares(state) : null;
+        lastMoveSquares = isHistoryLiveView() ? deriveLastMoveSquares(state) : getSelectedHistoryMove();
         renderBoard();
         updateStatusMessage();
         updateHistoryUI();
@@ -1880,6 +1962,11 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function applyStateData(newState, { resetSelection = true } = {}) {
+        const gameChanged = state && String(state.id) !== String(newState?.id);
+        if (gameChanged) {
+          boardFlipped = false;
+          if (btnFlip) btnFlip.setAttribute('aria-pressed', 'false');
+        }
         const canonicalState = stateStore.set(newState);
         latestFetchedStateFingerprint = stateFingerprint(canonicalState);
         visitorColor = canonicalState?.visitor_color;
@@ -1888,7 +1975,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         selectionIsStale = false;
         clearErrors();
 
-        renderScoreboard(canonicalState?.score);
+        renderLiveMetadata(canonicalState);
 
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = hostColor;
@@ -1907,7 +1994,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const fenToLoad = isLiveMode()
           ? canonicalState.fen
           : (historyFenForSelection || canonicalState.fen);
-        const shouldRenderPosition = isLiveMode() || (fenToLoad !== game.fen());
+        const shouldRenderPosition = gameChanged || isLiveMode() || (fenToLoad !== game.fen());
 
         if (shouldRenderPosition) {
           try {
@@ -1920,7 +2007,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           }
         }
         const liveSquares = deriveLastMoveSquares(canonicalState);
-        lastMoveSquares = isHistoryLiveView() ? liveSquares : null;
+        lastMoveSquares = isHistoryLiveView() ? liveSquares : getSelectedHistoryMove();
 
         const detected = computeGameOverFromFen(fenToLoad);
         const forcedOver = canonicalState.status && canonicalState.status !== 'active';
@@ -1953,6 +2040,7 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         updateHistoryUI();
         hideUpdateBanner();
+        if (btnFlip) btnFlip.disabled = submitting;
         if (!ecoLoadPrimed) {
           ecoLoadPrimed = true;
           ecoLiteStore.load().catch((err) => console.error('ECO dataset preload failed', err));
@@ -1975,6 +2063,8 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         if (hasChanged && allowQueue && historyState && !isHistoryLiveView()) {
           queuedServerState = newState;
+          // Present fetched facts without applying the queued position or permissions.
+          renderLiveMetadata(newState);
           selectionIsStale = true;
           setStatus('Live game updated. Click Live to return.', 'muted');
           btnSubmit.disabled = true;
@@ -1984,6 +2074,7 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         if (pendingMove && hasChanged && allowQueue) {
           queuedServerState = newState;
+          renderLiveMetadata(newState);
           selectionIsStale = true;
           setStatus('New server state available. Refresh to sync.', 'muted');
           btnSubmit.disabled = true;
@@ -2077,6 +2168,20 @@ if (!empty($preloadedGame['visitor_color'])) {
       });
       resetPromotionChooser();
 
+      if (btnFlip) {
+        btnFlip.addEventListener('click', () => {
+          if (!state || submitting) return;
+          boardFlipped = !boardFlipped;
+          btnFlip.setAttribute('aria-pressed', String(boardFlipped));
+          // Rerender the current position, including any preview; do not reload FEN.
+          renderBoard();
+        });
+      }
+      if (btnStart) {
+        btnStart.addEventListener('click', () => {
+          applyHistoryPosition(0, { forceRender: true, mode: 'review' });
+        });
+      }
       if (btnBack) {
         btnBack.addEventListener('click', () => {
           const next = getSelectedHistoryIndex() - 1;
