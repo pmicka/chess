@@ -1,0 +1,22 @@
+.review-import { display: grid; gap: 12px; margin: 20px 0; }
+.review-import textarea { width: 100%; resize: vertical; }
+.review-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.review-actions button, #annotationToggle { min-width: 44px; min-height: 44px; }
+#importError:empty { display: none; }
+#importError { color: var(--error); }
+#importedReview { padding: 16px; }
+#importedReview h2 { margin-top: 0; font-size: 20px; overflow-wrap: anywhere; }
+#importedReview pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+#importedReview .board-shell { position: relative; }
+#suggestionArrow { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+#importedBoard .review-check { background-image: radial-gradient(circle, rgba(255,70,70,.8), transparent 75%); }
+#annotationPanel { border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 12px 0; }
+#annotationToggle[aria-pressed="true"] { border-color: var(--accent); }
+.supplied-move-badge { position: absolute; top: 0; right: 0; z-index: 4; background: #202631; color: #f2b464; border-radius: 50%; padding: 1px 3px; font-size: clamp(9px, 2vw, 14px); line-height: 1.2; pointer-events: none; }
+@media (max-width: 480px) {
+  #importedReview { padding: 10px; }
+  .review-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .review-actions button { padding: 8px; font-size: 13px; }
+}
+.review-import { min-width: 0; }
+body::before { transform: none; }
