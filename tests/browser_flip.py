@@ -112,17 +112,11 @@ def main():
                                 else:
                                     expected = expected_move(fen, source, target, promotion)
                                     # Flipping cannot satisfy the CAPTCHA requirement.
-                                    page.locator('#btnSubmit').click()
+                                    assert page.locator('#btnSubmit').is_disabled()
                                     assert not payloads and fixture.snapshot() == before
                                     page.locator('#btnFlip').click()
                                     page.locator('#btnFlip').click()
                                     assert page.locator('#btnSubmit').is_disabled()
-                                    # Existing CAPTCHA rejection disables Submit until selection is renewed.
-                                    if promotion:
-                                        page.locator(f'.promo-btn[data-piece="{promotion}"]').click()
-                                    else:
-                                        square(page, source, color).click()
-                                        square(page, target, color).click()
                                     page.evaluate("window.onTurnstileSuccess('synthetic')")
                                     page.locator('#btnSubmit').click()
                                     page.wait_for_function("document.querySelector('#btnFlip').disabled")

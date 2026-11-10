@@ -1185,6 +1185,10 @@ textarea {
   gap: 10px;
 }
 
+.hud-details-panel[hidden] {
+  display: none;
+}
+
 .hud-details-panel .notation-controls {
   display: flex;
   gap: var(--space-12);
@@ -1698,6 +1702,323 @@ textarea {
 
   .game-snapshot {
     padding: 7px 9px;
+  }
+}
+
+/* Public live-game layout. Keep host and standalone review layouts independent. */
+.public-game-page::before {
+  /* Scaling the decorative background also enlarged the mobile scroll area. */
+  transform: none;
+}
+
+.game-skip-link {
+  position: fixed;
+  top: 8px;
+  left: 12px;
+  z-index: 100;
+  padding: 12px 16px;
+  background: var(--button-bg);
+  color: var(--button-text);
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-tight);
+  transform: translateY(-200%);
+}
+
+.game-skip-link:focus {
+  transform: none;
+}
+
+.game-skip-link:hover,
+.game-skip-link:focus-visible {
+  color: var(--button-text);
+}
+
+.public-game button {
+  min-height: 44px;
+}
+
+.public-game ~ .back-to-top {
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+}
+
+.public-game .sq.pick {
+  outline-color: #102a43;
+}
+
+.public-game .sq.hint {
+  box-shadow: inset 0 0 0 3px #102a43;
+}
+
+.public-game .sq.hint::before {
+  border: 2px dashed #102a43;
+}
+
+.public-game .sq.last {
+  box-shadow: inset 0 0 0 3px #442b00;
+}
+
+.public-game [hidden] {
+  display: none;
+}
+
+.public-game .board-help {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.public-game .board-help summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
+
+.public-game .board-help summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.public-game .board-help p {
+  margin: 4px 0;
+  color: inherit;
+}
+
+.public-game .sq:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border: 3px solid #10151c;
+  outline: 2px solid #fff;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.public-game .submission-help {
+  margin: 0;
+  min-height: 4.8em;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.public-game #btnCancel {
+  align-self: flex-start;
+  width: auto;
+  min-height: 44px;
+}
+
+.public-game .status-line {
+  min-height: 2.5em;
+}
+
+.public-game .turnstile-wrap {
+  min-height: 65px;
+}
+
+.public-game .connection-notice {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-tight);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.public-game .history-chip.reviewing {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.public-game .subhead {
+  font-size: 14px;
+  gap: 6px 10px;
+}
+
+.public-game .stage-card {
+  display: grid;
+  gap: 20px;
+  padding: 16px;
+  overflow: visible;
+}
+
+.public-game .board-stack {
+  min-width: 0;
+  gap: 10px;
+}
+
+.public-game .board-container {
+  margin-top: 0;
+  order: 0;
+}
+
+.public-game #board {
+  grid-template-columns: 0.35fr repeat(8, 1fr) 0.35fr;
+  grid-template-rows: 0.35fr repeat(8, 1fr) 0.35fr;
+  /* Preserve the essential board/piece contrast in forced-colors mode. */
+  forced-color-adjust: none;
+}
+
+.public-game .label {
+  font-size: clamp(10px, 1.6vw, 12px);
+}
+
+.public-game .control-bay {
+  min-width: 0;
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  gap: 16px;
+}
+
+.public-game .live-game-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.public-game .action-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.public-game .action-row .status-stack,
+.public-game .action-row .action-stack {
+  flex: 0 0 auto;
+  width: 100%;
+  align-items: stretch;
+}
+
+.public-game .primary-buttons {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.public-game .primary-buttons button {
+  min-width: 0;
+  min-height: 44px;
+}
+
+.public-game #btnRefresh,
+.public-game .history-buttons button,
+.public-game #btnFlip {
+  background: var(--button-surface);
+  color: var(--text-primary);
+}
+
+.public-game .turnstile-wrap {
+  justify-content: flex-start;
+}
+
+.public-game .history-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.public-game .history-buttons {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.public-game .history-buttons button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 4px;
+}
+
+.public-game #btnFlip {
+  width: auto;
+}
+
+.public-game .history-chip {
+  justify-self: end;
+  min-width: 0;
+}
+
+.public-game .scoreboard {
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.public-game .scoreboard::after {
+  display: none;
+}
+
+.public-game .live-game-card .score-item {
+  min-height: 40px;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+}
+
+.public-game .hud-details {
+  margin-top: 0;
+}
+
+@media (max-width: 480px) {
+  .public-game.wrap {
+    padding: 16px 8px 40px;
+  }
+
+  .public-game .stage-card {
+    padding: 8px;
+    gap: 16px;
+  }
+
+  .public-game .promotion-buttons {
+    gap: 4px;
+  }
+
+  .public-game .promotion-band {
+    padding: 8px;
+  }
+
+  .public-game .promo-btn {
+    min-width: 52px;
+    padding: 4px;
+  }
+
+  .public-game .promotion-piece {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 360px) {
+  .public-game.wrap {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .public-game .stage-card {
+    padding: 4px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .public-game.wrap {
+    max-width: 1120px;
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .public-game .stage-card {
+    grid-template-columns: minmax(0, 1fr) 304px;
+    align-items: start;
+    padding: 20px;
+    gap: 24px;
   }
 }
 

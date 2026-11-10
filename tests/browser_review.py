@@ -87,7 +87,7 @@ def main():
                             assert page.locator('#liveGameId').inner_text() == '#1'
                             assert page.locator('#liveHostColor').inner_text() == host.title()
                             assert page.locator('#liveWorldColor').inner_text() == color.title()
-                            assert page.locator('#liveGameStatus').inner_text() == 'White to move'
+                            assert page.locator('#liveGameStatus').inner_text() == f"{'World' if color == 'white' else 'Host'} to move · White"
                             assert page.locator('#liveLastMove').inner_text() == 'a6'
                             assert page.locator('#liveUpdatedAt').get_attribute('datetime') == '2026-11-01T12:34:56Z'
                             assert '2:34 AM' in page.locator('#liveUpdatedAt').inner_text()
@@ -134,7 +134,7 @@ def main():
                                 assert square(page, 'd4', color).locator('.piece-img, .piece-svg').count() == 1
                                 assert fixture.snapshot() == before, 'local preview changed persisted rows'
                                 page.locator('#btnStart').click()
-                                wait_history(page, 'Move 0 of 6')
+                                wait_history(page, 'Reviewing ply 0 of 6')
                                 assert page.locator('#btnSubmit').is_disabled()
                                 assert page.locator('#board .pick, #board .hint').count() == 0
                                 page.locator('#btnLive').click()
@@ -147,44 +147,44 @@ def main():
                                 assert page.locator('#board .pick').count() == 0
 
                             page.locator('#btnBack').click()
-                            wait_history(page, 'Move 5 of 6')
+                            wait_history(page, 'Reviewing ply 5 of 6')
                             assert page.locator('#snapshotLastMove').inner_text() == 'Bb5'
                             assert page.locator('#liveLastMove').inner_text() == 'a6'
                             page.locator('#btnFlip').focus()
                             page.keyboard.press('Space')
-                            wait_history(page, 'Move 5 of 6')
+                            wait_history(page, 'Reviewing ply 5 of 6')
                             assert square(page, 'a7', color).locator('.piece-img, .piece-svg').count() == 1
                             assert page.locator('#btnSubmit').is_disabled()
                             # Bypass the CSS pointer lock to exercise the JavaScript review guard too.
                             square(page, 'b5', color).evaluate('(element) => element.click()')
                             assert page.locator('#board .pick').count() == 0
                             page.keyboard.press('Home')
-                            wait_history(page, 'Move 0 of 6')
+                            wait_history(page, 'Reviewing ply 0 of 6')
                             assert page.locator('#btnStart').is_disabled()
                             assert page.locator('#btnBack').is_disabled()
                             assert page.locator('#board .piece-img, #board .piece-svg').count() == 32
                             page.keyboard.press('ArrowRight')
-                            wait_history(page, 'Move 1 of 6')
+                            wait_history(page, 'Reviewing ply 1 of 6')
                             assert square(page, 'e4', color).locator('.piece-img, .piece-svg').count() == 1
                             page.reload()
                             page.wait_for_function("document.body.dataset.gameId === '1'")
                             assert page.locator('#btnFlip').get_attribute('aria-pressed') == 'false'
-                            wait_history(page, 'Move 1 of 6')
+                            wait_history(page, 'Reviewing ply 1 of 6')
                             page.locator('#btnStart').focus()
                             page.keyboard.press('Enter')
-                            wait_history(page, 'Move 0 of 6')
+                            wait_history(page, 'Reviewing ply 0 of 6')
                             assert page.locator('#btnStart').is_disabled()
                             assert page.locator('#btnSubmit').is_disabled()
                             assert page.locator('#board .piece-img, #board .piece-svg').count() == 32
                             page.keyboard.press('End')
                             wait_history(page, 'Live')
                             page.locator('#btnStart').click()
-                            wait_history(page, 'Move 0 of 6')
+                            wait_history(page, 'Reviewing ply 0 of 6')
                             assert page.locator('#btnSubmit').is_disabled()
                             page.locator('#btnLive').click()
                             wait_history(page, 'Live')
                             page.locator('#btnBack').click()
-                            wait_history(page, 'Move 5 of 6')
+                            wait_history(page, 'Reviewing ply 5 of 6')
                             page.locator('#btnForward').click()
                             wait_history(page, 'Live')
                             assert fixture.snapshot() == before, 'review controls changed persisted rows'
@@ -192,23 +192,23 @@ def main():
 
                             # Only the fixture changes server state; the browser remains read-only.
                             page.locator('#btnBack').click()
-                            wait_history(page, 'Move 5 of 6')
+                            wait_history(page, 'Reviewing ply 5 of 6')
                             fixture.execute("UPDATE games SET fen=?,pgn=?,turn_color='black',revision=1,last_move_san='Ba4',updated_at='2026-11-07 12:00:00'",
                                             (advanced['fen'], advanced['pgn']))
                             after_update = fixture.snapshot()
                             page.evaluate('window.phase0Poll()')
                             page.wait_for_function("document.querySelector('#updateBanner').classList.contains('show')")
                             assert page.locator('#liveLastMove').inner_text() == 'Ba4'
-                            assert page.locator('#liveGameStatus').inner_text() == 'Black to move'
+                            assert page.locator('#liveGameStatus').inner_text() == f"{'World' if color == 'black' else 'Host'} to move · Black"
                             assert page.locator('#liveUpdatedAt').get_attribute('datetime') == '2026-11-07T12:00:00Z'
                             assert page.locator('#snapshotLastMove').inner_text() == 'Bb5'
-                            wait_history(page, 'Move 5 of 6')
+                            wait_history(page, 'Reviewing ply 5 of 6')
                             page.locator('#btnFlip').click()
                             assert page.locator('#btnFlip').get_attribute('aria-pressed') == 'true'
                             assert square(page, 'b5', color).locator('.piece-img, .piece-svg').count() == 1
                             assert page.locator('#btnSubmit').is_disabled()
                             page.locator('#btnStart').click()
-                            wait_history(page, 'Move 0 of 6')
+                            wait_history(page, 'Reviewing ply 0 of 6')
                             assert page.locator('#btnSubmit').is_disabled()
                             assert fixture.snapshot() == after_update
                             page.locator('#btnLive').click()

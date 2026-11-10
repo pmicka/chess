@@ -13,7 +13,7 @@
  * 2) Render a board UI and allow interaction only for the visitor side.
  * 3) Use chess.js client-side to prevent obviously illegal moves.
  * 4) On submit:
- *    - Include CAPTCHA token + updated FEN/PGN + move notation
+ *    - Include CAPTCHA token, coordinates, promotion, game ID, revision, and retry ID
  *    - POST to /api/visitor_move.php
  *
  * Security model (MVP):
@@ -108,10 +108,11 @@ if (!empty($preloadedGame['visitor_color'])) {
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16x16.png">
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <script id="turnstileApi" src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&amp;onload=onTurnstileReady" defer></script>
 </head>
-<body>
-  <div class="wrap">
+<body class="public-game-page">
+  <a class="game-skip-link" href="#board">Skip to chessboard</a>
+  <main class="wrap public-game">
     <h1>The Internet Gambit</h1>
     <p class="subhead meta-line">
       <span>Visitors play <strong id="visitorColorLabel">black</strong></span>
@@ -123,8 +124,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       <div class="board-stack">
         <div class="board-container">
           <div class="board-shell">
-            <div id="board" aria-label="Chess board" role="application"></div>
-            <div id="promotionChooser" class="promotion-chooser" aria-live="polite" aria-label="Choose promotion piece">
+            <div id="board" aria-label="Chess board" role="group" aria-describedby="boardHelp" tabindex="-1"></div>
+            <div id="promotionChooser" class="promotion-chooser" role="group" aria-live="polite" aria-label="Choose promotion piece">
               <div class="promotion-band" role="group" aria-label="Promotion options">
                 <div class="promotion-buttons">
                   <button type="button" class="promo-btn active" data-piece="q" aria-label="Promote to Queen">
@@ -144,12 +145,33 @@ if (!empty($preloadedGame['visitor_color'])) {
             </div>
           </div>
         </div>
-        <section class="scoreboard live-game-card" id="scoreboard" aria-labelledby="liveGameTitle">
+        <details class="board-help">
+          <summary>Keyboard controls</summary>
+          <p id="boardHelp">Tab to the board, use arrow keys to explore, Enter or Space to select, and Escape to cancel. Home and End move to the edges of the current row.</p>
+        </details>
+        <div class="control-row review-row">
+          <div class="history-controls">
+            <div class="history-buttons">
+              <button id="btnStart" type="button" disabled>Start</button>
+              <button id="btnBack" type="button">Back</button>
+              <button id="btnForward" type="button">Forward</button>
+              <button id="btnLive" type="button">Live</button>
+            </div>
+            <button id="btnFlip" type="button" aria-pressed="false" disabled>Flip board</button>
+            <span id="historyStatus" class="history-chip" aria-live="polite"></span>
+          </div>
+        </div>
+        <div id="historyNotice" class="banner" role="status" aria-live="polite">
+          <span>Reviewing history — click Live to return before submitting a move.</span>
+        </div>
+      </div>
+      <div class="control-bay">
+        <section class="live-game-summary" aria-labelledby="liveGameTitle">
           <div class="live-game-heading">
             <h2 id="liveGameTitle">Current game <span id="liveGameId"></span></h2>
             <span id="liveGameStatus" class="muted">Loading…</span>
           </div>
-          <div class="live-game-players" aria-label="Current game sides">
+          <div class="live-game-players" role="group" aria-label="Current game sides">
             <span>Host · <strong id="liveHostColor">—</strong></span>
             <span>World · <strong id="liveWorldColor">—</strong></span>
           </div>
@@ -157,7 +179,49 @@ if (!empty($preloadedGame['visitor_color'])) {
             <div><dt>Latest move</dt><dd id="liveLastMove">—</dd></div>
             <div><dt>Last updated</dt><dd><time id="liveUpdatedAt">—</time></dd></div>
           </dl>
-          <p class="live-score-heading muted">All-time score</p>
+        </section>
+        <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
+          <div>
+            <h3 id="gameOverTitle"></h3>
+            <p id="gameOverBody" class="muted"></p>
+          </div>
+          <div class="gameover-actions">
+            <button id="gameOverRefresh" type="button">Refresh</button>
+          </div>
+        </div>
+        <div class="control-row action-row">
+          <div class="status-stack">
+            <div class="status-line" aria-live="polite">
+              <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
+              <span id="statusMsg" class="muted"></span>
+            </div>
+          </div>
+          <p class="muted selected-move" hidden>
+            Not submitted: <code id="movePreview">none</code>
+          </p>
+          <button id="btnCancel" class="secondary button-compact" type="button" hidden>Cancel selection</button>
+          <p id="submissionHelp" class="submission-help" role="status" aria-live="polite"></p>
+          <div class="action-stack">
+            <div class="primary-buttons">
+              <button id="btnSubmit" aria-describedby="submissionHelp" disabled>Submit move</button>
+              <button id="btnRefresh">Refresh</button>
+            </div>
+            <div class="turnstile-wrap" hidden>
+              <div
+                id="turnstileWidget"
+                data-sitekey="<?= htmlspecialchars(TURNSTILE_SITE_KEY ?? '', ENT_QUOTES) ?>"
+              ></div>
+            </div>
+          </div>
+        </div>
+        <p id="connectionNotice" class="connection-notice" role="status" aria-live="polite" hidden></p>
+        <div id="updateBanner" class="banner" role="status" aria-live="polite">
+          <span>New server state available. Refresh to sync.</span>
+          <button id="btnBannerRefresh">Refresh</button>
+        </div>
+        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
+        <section class="scoreboard live-game-card" id="scoreboard" aria-labelledby="allTimeTitle">
+          <h2 class="live-score-heading muted" id="allTimeTitle">All-time score</h2>
           <div class="score-grid" role="group" aria-label="All-time score">
             <div class="score-item">
               <span class="score-label">Host</span>
@@ -174,63 +238,6 @@ if (!empty($preloadedGame['visitor_color'])) {
           </div>
           <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
         </section>
-      </div>
-      <div id="gameOverBanner" class="gameover-banner" role="alert" aria-live="polite">
-        <div>
-          <h3 id="gameOverTitle"></h3>
-          <p id="gameOverBody" class="muted"></p>
-        </div>
-        <div class="gameover-actions">
-          <button id="gameOverRefresh" type="button">Refresh</button>
-        </div>
-      </div>
-      <div class="control-bay">
-        <div class="control-row action-row">
-          <div class="status-stack">
-            <div class="status-line" aria-live="polite">
-              <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
-              <span id="statusMsg" class="muted"></span>
-            </div>
-          </div>
-          <div class="action-stack">
-            <div class="primary-buttons">
-              <button id="btnSubmit" disabled>Submit move</button>
-              <button id="btnRefresh">Refresh</button>
-            </div>
-            <div class="turnstile-wrap">
-              <div
-                class="cf-turnstile"
-                data-sitekey="<?= htmlspecialchars(TURNSTILE_SITE_KEY ?? '', ENT_QUOTES) ?>"
-                data-callback="onTurnstileSuccess"
-                data-expired-callback="onTurnstileExpired"
-                data-error-callback="onTurnstileError"
-              ></div>
-            </div>
-          </div>
-        </div>
-        <div class="control-row review-row">
-          <div class="history-controls">
-            <div class="history-buttons">
-              <button id="btnStart" type="button" disabled>Start</button>
-              <button id="btnBack" type="button">Back</button>
-              <button id="btnForward" type="button">Forward</button>
-              <button id="btnLive" type="button">Live</button>
-            </div>
-            <button id="btnFlip" type="button" aria-pressed="false" disabled>Flip board</button>
-            <span id="historyStatus" class="history-chip" aria-live="polite"></span>
-          </div>
-        </div>
-        <div id="historyNotice" class="banner" role="status" aria-live="polite">
-          <span>Reviewing history — click Live to return before submitting a move.</span>
-        </div>
-        <p class="muted selected-move" hidden>
-          Selected move: <code id="movePreview">none</code>
-        </p>
-        <div id="updateBanner" class="banner" role="status" aria-live="polite">
-          <span>New server state available. Refresh to sync.</span>
-          <button id="btnBannerRefresh">Refresh</button>
-        </div>
-        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
         <div class="hud-details">
           <button id="detailsToggle" class="details-toggle" type="button" aria-expanded="false" aria-controls="hudDetailsPanel">Details</button>
           <div id="hudDetailsPanel" class="hud-details-panel" hidden>
@@ -257,7 +264,7 @@ if (!empty($preloadedGame['visitor_color'])) {
               <div class="details-advanced-header">
                 <p class="muted details-advanced-title">Advanced</p>
                 <div class="notation-controls">
-                  <button id="toggleNotation" class="secondary ghost-button button-compact" type="button">Show notation</button>
+                  <button id="toggleNotation" class="secondary ghost-button button-compact" type="button" aria-expanded="false" aria-controls="notationMount">Show live-game notation</button>
                   <span id="notationStatus" class="muted" aria-live="polite"></span>
                 </div>
               </div>
@@ -281,7 +288,7 @@ if (!empty($preloadedGame['visitor_color'])) {
     <footer class="app-footer">
       <p class="footer-note">Code: <a href="LICENSE">MIT</a> · Pieces: <a href="assets/pieces/lichess/LICENSE.txt">Lichess CC0</a> · <a href="https://github.com/pmicka/chess/" target="_blank" rel="noopener noreferrer">source</a></p>
     </footer>
-  </div>
+  </main>
 
   <button type="button" id="backToTopButton" class="back-to-top" aria-label="Back to top">
     <svg
@@ -339,6 +346,9 @@ if (!empty($preloadedGame['visitor_color'])) {
       const btnSubmit = document.getElementById('btnSubmit');
       const statusMsg = document.getElementById('statusMsg');
       const statusSpinner = document.getElementById('statusSpinner');
+      const submissionHelp = document.getElementById('submissionHelp');
+      const btnCancel = document.getElementById('btnCancel');
+      const connectionNotice = document.getElementById('connectionNotice');
       const movePreview = document.getElementById('movePreview');
       const selectedMoveRow = document.querySelector('.selected-move');
       const errorBox = document.getElementById('errorBox');
@@ -349,7 +359,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       const scoreLastResult = document.getElementById('scoreLastResult');
       const visitorColorLabel = document.getElementById('visitorColorLabel');
       const hostColorLabel = document.getElementById('hostColorLabel');
-      const turnstileWidget = document.querySelector('.cf-turnstile');
+      const turnstileWidget = document.getElementById('turnstileWidget');
       const updateBanner = document.getElementById('updateBanner');
       const updateBannerText = updateBanner ? updateBanner.querySelector('span') : null;
       const btnBannerRefresh = document.getElementById('btnBannerRefresh');
@@ -428,6 +438,16 @@ if (!empty($preloadedGame['visitor_color'])) {
       let ecoLoadPrimed = false;
       let openingLookupToken = 0;
       let detailsOpen = false;
+      let focusedSquare = null;
+      let verificationMessage = '';
+      let refreshingState = false;
+      let stateUnavailable = false;
+      let connectionFailed = false;
+      let turnstileWidgetId = null;
+      let renderingVerification = false;
+      let verificationScriptFailed = false;
+      let verificationRenderFailed = false;
+      let stateRequestId = 0;
       function hydrateEcoEntries(rawEntries) {
         if (!Array.isArray(rawEntries)) return [];
         return rawEntries.map((entry, idx) => {
@@ -628,9 +648,123 @@ if (!empty($preloadedGame['visitor_color'])) {
       restoreDetailsState();
       updateMovePreviewDisplay('');
 
-      window.onTurnstileSuccess = (token) => { turnstileToken = token; };
-      window.onTurnstileExpired = () => { turnstileToken = null; };
-      window.onTurnstileError = () => { turnstileToken = null; };
+      window.onTurnstileSuccess = (token) => {
+        turnstileToken = token;
+        verificationMessage = '';
+        syncSubmissionControls();
+      };
+      window.onTurnstileExpired = () => {
+        turnstileToken = null;
+        verificationMessage = 'Verification expired. Complete the CAPTCHA again.';
+        syncSubmissionControls();
+      };
+      window.onTurnstileError = () => {
+        turnstileToken = null;
+        verificationMessage = 'Verification failed. Retry the CAPTCHA; if it stays unavailable, reload the page.';
+        syncSubmissionControls();
+      };
+      window.onTurnstileTimeout = () => {
+        turnstileToken = null;
+        verificationMessage = 'Verification timed out. Complete the CAPTCHA again.';
+        syncSubmissionControls();
+      };
+
+      // Explicit rendering starts verification only for a candidate or unresolved
+      // retry. This changes presentation timing, never the server's CAPTCHA gate.
+      window.onTurnstileReady = () => { verificationScriptFailed = false; syncSubmissionControls(); };
+      document.getElementById('turnstileApi').addEventListener('error', () => {
+        verificationScriptFailed = true;
+        syncSubmissionControls();
+      });
+
+      function syncVerificationWidget() {
+        const needed = isHistoryLiveView() && (Boolean(submissions.pending) ||
+          (pendingMove && isVisitorsTurn() && !gameOverState.over && !selectionIsStale &&
+           !queuedServerState && !stateUnavailable && !connectionFailed && !refreshingState));
+        turnstileWidget.parentElement.hidden = !needed;
+        if (!needed) {
+          if (turnstileWidgetId !== null && window.turnstile?.remove) {
+            window.turnstile.remove(turnstileWidgetId);
+          }
+          turnstileWidgetId = null;
+          verificationRenderFailed = false;
+          turnstileToken = null;
+          verificationMessage = '';
+          return;
+        }
+        if (turnstileWidgetId !== null || renderingVerification || verificationRenderFailed) return;
+        if (!window.turnstile?.render) {
+          verificationMessage = verificationScriptFailed
+            ? 'Verification could not load. Check your connection or content blocker, then reload the page.'
+            : 'Loading CAPTCHA. If it does not appear, check your connection or content blocker and reload.';
+          return;
+        }
+        renderingVerification = true;
+        try {
+          verificationMessage = '';
+          turnstileWidgetId = window.turnstile.render(turnstileWidget, {
+            sitekey: turnstileWidget.dataset.sitekey,
+            size: 'flexible',
+            theme: 'dark',
+            callback: window.onTurnstileSuccess,
+            'expired-callback': window.onTurnstileExpired,
+            'error-callback': window.onTurnstileError,
+            'timeout-callback': window.onTurnstileTimeout,
+          });
+          if (turnstileWidgetId == null) throw new Error('Widget unavailable');
+        } catch (_) {
+          turnstileWidgetId = null;
+          verificationRenderFailed = true;
+          verificationMessage = 'Verification could not start. Reload the page to retry.';
+        } finally {
+          renderingVerification = false;
+        }
+      }
+
+      function syncSubmissionControls() {
+        syncVerificationWidget();
+        let reason;
+        let ready = false;
+        const live = isHistoryLiveView();
+        if (submitting) reason = 'Submitting your move. Please wait.';
+        else if (!live) reason = 'Reviewing a position. Return to Live before submitting.';
+        else if (submissions.pending) {
+          // Receipt recovery remains available without a fresh CAPTCHA. A new
+          // application of the stored move still verifies CAPTCHA on the server.
+          ready = true;
+          reason = 'Previous outcome unconfirmed. Retry the same move safely or refresh to check.';
+        } else if (refreshingState) reason = 'Refreshing the live game…';
+        else if (!state || stateUnavailable) reason = 'Game unavailable. Use Refresh to try again.';
+        else if (connectionFailed) reason = 'Connection lost. Refresh successfully before submitting.';
+        else if (selectionIsStale || queuedServerState || (selectionStateFingerprint &&
+                 selectionStateFingerprint !== latestFetchedStateFingerprint)) {
+          reason = 'The live game changed. Refresh before selecting another move.';
+        } else if (gameOverState.over || state.status !== 'active') reason = 'Game over. Waiting for the host to start the next game.';
+        else if (!isVisitorsTurn()) reason = 'Waiting for the host. Moves happen asynchronously; this game refreshes automatically.';
+        else if (!pendingMove) reason = selectedSquare ? 'Select a highlighted destination, or press Escape to cancel.' : 'Select one of your pieces, then a legal destination.';
+        else if (!turnstileToken) reason = verificationMessage || 'Complete the CAPTCHA to submit this move.';
+        else {
+          ready = true;
+          reason = 'Verified. Submit move to confirm your selection.';
+        }
+        btnSubmit.disabled = !ready;
+        const submitLabel = submitting ? 'Submitting…' : submissions.pending ? 'Retry same move' : 'Submit move';
+        if (btnSubmit.textContent !== submitLabel) btnSubmit.textContent = submitLabel;
+        if (submissionHelp.textContent !== reason) submissionHelp.textContent = reason;
+        btnCancel.hidden = !(pendingMove || selectedSquare) || Boolean(submissions.pending);
+        btnCancel.disabled = submitting;
+        boardEl.setAttribute('aria-busy', String(submitting || refreshingState));
+      }
+
+      function cancelSelectedMove() {
+        if (submitting || submissions.pending) return;
+        clearSelection({ restore: true });
+        lastMoveSquares = isHistoryLiveView() ? deriveLastMoveSquares(state) : getSelectedHistoryMove();
+        updateHighlights();
+        updateStatusMessage();
+        syncSubmissionControls();
+        findSquareEl(focusedSquare)?.focus({ preventScroll: true });
+      }
 
       function squareId(logical) {
         return boardIdMap.toOpaque(logical);
@@ -683,6 +817,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function renderBoard() {
+        const restoreFocus = boardEl.contains(document.activeElement);
         boardEl.innerHTML = '';
 
         const displayOrientation = boardFlipped
@@ -691,6 +826,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const layout = getOrientationLayout(displayOrientation);
         const files = layout.files;
         const ranks = layout.ranks;
+        if (!focusedSquare) focusedSquare = visitorColor === 'white' ? 'e2' : 'e7';
 
         for (let row = 0; row < 10; row++) {
           for (let col = 0; col < 10; col++) {
@@ -729,9 +865,38 @@ if (!empty($preloadedGame['visitor_color'])) {
             const div = document.createElement('div');
             div.className = 'sq ' + (((fileIndex + rank) % 2 === 0) ? 'light' : 'dark');
             div.dataset.squareId = squareId(sq);
-            div.setAttribute('aria-label', 'Board square');
+            div.setAttribute('role', 'button');
+            div.tabIndex = sq === focusedSquare ? 0 : -1;
+            div.addEventListener('focus', () => {
+              focusedSquare = sq;
+              boardEl.querySelectorAll('.sq').forEach(el => { el.tabIndex = el === div ? 0 : -1; });
+            });
+            div.addEventListener('keydown', (ev) => {
+              if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'Enter', ' ', 'Escape'].includes(ev.key)) {
+                ev.preventDefault();
+                ev.stopPropagation();
+              } else return;
+              if (ev.key === 'Enter' || ev.key === ' ') {
+                onSquareClick(div.dataset.squareId);
+              } else if (ev.key === 'Escape') {
+                cancelSelectedMove();
+              } else {
+                const squares = Array.from(boardEl.querySelectorAll('.sq'));
+                const idx = squares.indexOf(div);
+                const rowStart = Math.floor(idx / 8) * 8;
+                let target = idx;
+                if (ev.key === 'ArrowLeft') target = Math.max(rowStart, idx - 1);
+                if (ev.key === 'ArrowRight') target = Math.min(rowStart + 7, idx + 1);
+                if (ev.key === 'ArrowUp') target = Math.max(idx % 8, idx - 8);
+                if (ev.key === 'ArrowDown') target = Math.min(56 + idx % 8, idx + 8);
+                if (ev.key === 'Home') target = rowStart;
+                if (ev.key === 'End') target = rowStart + 7;
+                squares[target]?.focus();
+              }
+            });
             const pieceEl = renderPieceElement(piece);
             if (pieceEl) {
+              pieceEl.setAttribute('aria-hidden', 'true');
               div.appendChild(pieceEl);
             }
 
@@ -741,9 +906,13 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
 
         updateHighlights();
+        if (restoreFocus) findSquareEl(focusedSquare)?.focus({ preventScroll: true });
       }
 
       function resetPromotionChooser() {
+        if (promotionChooser?.contains(document.activeElement)) {
+          findSquareEl(focusedSquare)?.focus({ preventScroll: true });
+        }
         promotionChoice = 'q';
         promotionPending = false;
         promotionColor = null;
@@ -842,6 +1011,22 @@ if (!empty($preloadedGame['visitor_color'])) {
             }
           }
         }
+        const names = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+        const locked = !state || stateUnavailable || connectionFailed || refreshingState || submitting ||
+          Boolean(submissions.pending) || !isHistoryLiveView() || !isVisitorsTurn() ||
+          gameOverState.over || selectionIsStale || Boolean(queuedServerState) || promotionPending;
+        squares.forEach(el => {
+          const sq = boardIdMap.toLogical(el.dataset.squareId);
+          const piece = game.get(sq);
+          const description = piece ? `${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.type]}` : 'empty';
+          const flags = [el.classList.contains('pick') ? 'selected' : '',
+            el.classList.contains('hint') ? 'legal destination' : '',
+            el.classList.contains('last') ? 'last move' : ''].filter(Boolean);
+          el.setAttribute('aria-label', [sq, description, ...flags].join(', '));
+          el.setAttribute('aria-pressed', String(el.classList.contains('pick')));
+          el.setAttribute('aria-disabled', String(locked));
+        });
+        syncSubmissionControls();
       }
 
       function promotionInfoForMove(from, to) {
@@ -858,6 +1043,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const colorPrefix = promotionColor === 'b' ? 'b' : 'w';
         promotionButtons.forEach((btn) => {
           btn.classList.toggle('active', btn.dataset.piece === promotionChoice);
+          btn.setAttribute('aria-pressed', String(btn.dataset.piece === promotionChoice));
           const img = btn.querySelector('img');
           if (img) {
             const pieceCode = (btn.dataset.piece || 'q').toUpperCase();
@@ -894,7 +1080,7 @@ if (!empty($preloadedGame['visitor_color'])) {
               };
               lastMoveSquares = { from: move.from, to: move.to };
               updateMovePreviewDisplay(`${move.san} (${move.from}→${move.to})`);
-              btnSubmit.disabled = false;
+              syncSubmissionControls();
               renderBoard();
             }
           } catch (err) {
@@ -927,8 +1113,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
-      function showUpdateBanner(message = null) {
-        if (message) setUpdateBannerMessage(message);
+      function showUpdateBanner(message = 'New server state available. Refresh to sync.') {
+        setUpdateBannerMessage(message || 'New server state available. Refresh to sync.');
         updateBanner.classList.add('show');
       }
 
@@ -938,8 +1124,9 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function onSquareClick(opaqueSquareId) {
-        if (submissions.pending || submitting) return;
+        if (submissions.pending || submitting || refreshingState || stateUnavailable || connectionFailed || promotionPending || gameOverState.over) return;
         if (!state) return;
+        if (selectionIsStale || queuedServerState) { syncSubmissionControls(); return; }
         if (historyState && !isHistoryLiveView()) {
           setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
           return;
@@ -970,6 +1157,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           if (piece.color !== visitorTurnChar) return;
           selectedSquare = sq;
           updateHighlights();
+          updateStatusMessage();
           return;
         }
 
@@ -1007,6 +1195,8 @@ if (!empty($preloadedGame['visitor_color'])) {
           }
           pendingBaseFen = null;
           resetPromotionChooser();
+          setStatus('That destination is not legal. Choose a highlighted square.', 'error');
+          syncSubmissionControls();
           return;
         }
 
@@ -1031,27 +1221,33 @@ if (!empty($preloadedGame['visitor_color'])) {
         selectionIsStale = false;
         lastMoveSquares = { from: move.from, to: move.to };
         updateMovePreviewDisplay(`${move.san} (${move.from}→${move.to})`);
-        btnSubmit.disabled = false;
+        syncSubmissionControls();
         selectedSquare = null;
         renderBoard();
+        updateStatusMessage();
+        if (promotionPending) promotionButtons.find(btn => btn.dataset.piece === promotionChoice)?.focus();
       }
 
       function ensureTokenPresent() {
         if (turnstileToken) return true;
-        setStatus('Solve the CAPTCHA before submitting.', 'error');
+        verificationMessage = verificationMessage || 'Complete the CAPTCHA before submitting.';
+        syncSubmissionControls();
+        setStatus(verificationMessage, 'error');
         btnSubmit.disabled = true;
         return false;
       }
 
       function resetTurnstile() {
-        if (window.turnstile && turnstileWidget) {
-          window.turnstile.reset(turnstileWidget);
-        }
         turnstileToken = null;
+        verificationMessage = '';
+        if (window.turnstile && turnstileWidgetId !== null) {
+          window.turnstile.reset(turnstileWidgetId);
+        }
+        syncSubmissionControls();
       }
 
       function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
-        statusMsg.textContent = message;
+        if (statusMsg.textContent !== message) statusMsg.textContent = message;
         statusMsg.className = tone;
         statusSpinner.classList.toggle('show', showSpinner);
       }
@@ -1064,7 +1260,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         liveWorldColor.textContent = colorLabel(currentState.visitor_color);
         const status = currentState.status || 'Unknown';
         const turn = colorLabel(currentState.turn_color);
-        liveGameStatus.textContent = status === 'active' ? `${turn} to move` : status;
+        const actor = currentState.turn_color === currentState.visitor_color ? 'World' : 'Host';
+        liveGameStatus.textContent = status === 'active' ? `${actor} to move · ${turn}` : status;
         liveLastMove.textContent = currentState.last_move_san || '—';
         // SQLite timestamps are UTC; use an unambiguous machine-readable value.
         const iso = normalizeTimestamp(currentState.updated_at);
@@ -1098,6 +1295,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function blockForStateError(message) {
+        stateUnavailable = true;
         setStatus(message, 'error');
         btnSubmit.disabled = true;
         pendingMove = null;
@@ -1122,12 +1320,10 @@ if (!empty($preloadedGame['visitor_color'])) {
         btnRefresh.disabled = isSubmitting;
         btnBannerRefresh.disabled = isSubmitting;
         statusSpinner.classList.toggle('show', isSubmitting);
-        if (!isSubmitting && (submissions.pending || (pendingMove && !selectionIsStale))) {
-          btnSubmit.disabled = false;
-        }
-        if (historyState && !isHistoryLiveView()) {
-          btnSubmit.disabled = true;
-        }
+        promotionButtons.forEach(btn => { btn.disabled = isSubmitting; });
+        if (gameOverRefresh) gameOverRefresh.disabled = isSubmitting;
+        updateHistoryUI();
+        updateHighlights();
       }
 
       function normalizeTimestamp(ts) {
@@ -1209,17 +1405,17 @@ if (!empty($preloadedGame['visitor_color'])) {
         const hostWon = winnerColor && winnerColor === hostColorNorm;
         const worldWon = winnerColor && winnerColor === visitorColorNorm;
         let title = 'Game over';
-        let body = 'No winner this time. Next game will flip the sides as usual.';
+        let body = 'Waiting for the host to start the next game. Sides will switch.';
         if (gameOverState.reason === 'checkmate') {
           title = 'Checkmate';
           if (hostWon) {
-            body = 'You win this one. The board resets and the sides flip for the next round.';
+            body = 'Host wins. Waiting for the host to start the next game; sides will switch.';
           } else if (worldWon) {
-            body = 'The world takes it. Same board, next game—sides flip and we go again.';
+            body = 'World wins. Waiting for the host to start the next game; sides will switch.';
           }
         } else if (gameOverState.reason === 'stalemate' || gameOverState.reason === 'draw') {
           title = 'Draw';
-          body = 'No winner this time. Next game will flip the sides as usual.';
+          body = 'Draw. Waiting for the host to start the next game; sides will switch.';
         }
 
         if (gameOverTitle) gameOverTitle.textContent = title;
@@ -1229,6 +1425,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function updateStatusMessage() {
+        syncSubmissionControls();
         if (!state) return;
 
         if (historyState && !isHistoryLiveView()) {
@@ -1254,7 +1451,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const lastMoveLine = buildLastMoveText(state, lastSan);
 
         if (isVisitorsTurn()) {
-          setStatus('Your turn. Solve CAPTCHA to submit.', 'ok');
+          setStatus(pendingMove ? 'Move preview — not submitted.' : selectedSquare ? 'Choose a legal destination.' : 'Your turn. Select a piece to begin.', 'muted');
           boardEl.classList.remove('locked');
         } else {
           const waitingMsg = lastMoveLine && lastMoveLine !== '—'
@@ -1741,24 +1938,22 @@ if (!empty($preloadedGame['visitor_color'])) {
         const selectedIdx = getSelectedHistoryIndex();
         const isLive = isHistoryLiveView();
         historyState.idx = selectedIdx;
-        if (btnStart) btnStart.disabled = selectedIdx <= 0;
-        if (btnBack) btnBack.disabled = selectedIdx <= 0;
-        if (btnForward) btnForward.disabled = selectedIdx >= h.timeline.length - 1;
-        if (btnLive) btnLive.disabled = isLive;
+        if (btnStart) btnStart.disabled = submitting || selectedIdx <= 0;
+        if (btnBack) btnBack.disabled = submitting || selectedIdx <= 0;
+        if (btnForward) btnForward.disabled = submitting || selectedIdx >= h.timeline.length - 1;
+        if (btnLive) btnLive.disabled = submitting || isLive;
         const statusText = h.timeline.length > 1
-          ? (isLive ? 'Live' : `Move ${selectedIdx} of ${h.timeline.length - 1}`)
+          ? (isLive ? 'Live' : `Reviewing ply ${selectedIdx} of ${h.timeline.length - 1}`)
           : 'Live';
         historyStatus.textContent = statusText;
         historyStatus.className = 'history-chip';
         historyStatus.classList.toggle('muted', isLive);
-        historyStatus.classList.toggle('ok', !isLive);
+        historyStatus.classList.toggle('reviewing', !isLive);
         if (historyNotice) {
           historyNotice.classList.toggle('show', !isLive);
         }
         boardEl.classList.toggle('history-locked', Boolean(h && !isLive));
-        if (!isLive) {
-          btnSubmit.disabled = true;
-        }
+        syncSubmissionControls();
       }
 
       function getSelectedHistoryMove() {
@@ -1785,7 +1980,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           return;
         }
         try {
-          game.load(targetFen);
+          if (!game.load(targetFen)) throw new Error('Invalid history FEN');
         } catch (err) {
           historyStatus.textContent = `History unavailable: ${err && err.message ? err.message : err}`;
           historyStatus.className = 'history-chip error';
@@ -1803,6 +1998,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function applyHistoryPosition(targetIdx, { forceRender = false, mode = null, allowAutoLive = false } = {}) {
+        if (submitting) return;
         const h = historyState;
         if (!h || !Array.isArray(h.timeline) || !h.timeline.length) {
           return;
@@ -1843,7 +2039,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         fenHeader.className = 'notation-header';
         const fenLabel = document.createElement('p');
         fenLabel.className = 'notation-label muted';
-        fenLabel.textContent = 'FEN';
+        fenLabel.textContent = 'Live-game FEN';
         const fenActions = document.createElement('div');
         fenActions.className = 'notation-actions';
         const copyFenBtn = document.createElement('button');
@@ -1860,7 +2056,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         const fenBox = document.createElement('pre');
         fenBox.className = 'notation-readout notation-readout--fen';
         fenBox.setAttribute('tabindex', '0');
-        fenBox.setAttribute('aria-label', 'Current FEN');
+        fenBox.setAttribute('role', 'region');
+        fenBox.setAttribute('aria-label', 'Canonical live-game FEN');
         fenBlock.appendChild(fenHeader);
         fenBlock.appendChild(fenBox);
 
@@ -1870,7 +2067,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         pgnHeader.className = 'notation-header';
         const pgnLabel = document.createElement('p');
         pgnLabel.className = 'notation-label muted';
-        pgnLabel.textContent = 'PGN';
+        pgnLabel.textContent = 'Live-game PGN';
         const pgnActions = document.createElement('div');
         pgnActions.className = 'notation-actions';
         const copyPgnBtn = document.createElement('button');
@@ -1887,7 +2084,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         const pgnBox = document.createElement('pre');
         pgnBox.className = 'notation-readout notation-readout--pgn';
         pgnBox.setAttribute('tabindex', '0');
-        pgnBox.setAttribute('aria-label', 'Current PGN');
+        pgnBox.setAttribute('role', 'region');
+        pgnBox.setAttribute('aria-label', 'Canonical live-game PGN');
         pgnBlock.appendChild(pgnHeader);
         pgnBlock.appendChild(pgnBox);
 
@@ -1897,7 +2095,8 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         notationElements = { fenBox, pgnBox, copyFenBtn, copyPgnBtn, copyFenMsg, copyPgnMsg };
         notationVisible = true;
-        toggleNotationBtn.textContent = 'Hide notation';
+        toggleNotationBtn.textContent = 'Hide live-game notation';
+        toggleNotationBtn.setAttribute('aria-expanded', 'true');
         notationStatus.textContent = 'Notation visible';
 
         const clearCopyNotes = () => {
@@ -1913,13 +2112,20 @@ if (!empty($preloadedGame['visitor_color'])) {
               await navigator.clipboard.writeText(text);
             } else {
               const temp = document.createElement('textarea');
+              const previousFocus = document.activeElement;
               temp.value = text;
               temp.style.position = 'fixed';
               temp.style.opacity = '0';
               document.body.appendChild(temp);
               temp.select();
-              document.execCommand('copy');
-              document.body.removeChild(temp);
+              let copied;
+              try {
+                copied = document.execCommand('copy');
+              } finally {
+                temp.remove();
+                if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+              }
+              if (!copied) throw new Error('Clipboard unavailable');
             }
             targetMsgEl.textContent = 'Copied';
           } catch (err) {
@@ -1937,7 +2143,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         notationMount.innerHTML = '';
         notationElements = null;
         notationVisible = false;
-        toggleNotationBtn.textContent = 'Show notation';
+        toggleNotationBtn.textContent = 'Show live-game notation';
+        toggleNotationBtn.setAttribute('aria-expanded', 'false');
         notationStatus.textContent = 'Notation hidden';
       }
 
@@ -1992,14 +2199,16 @@ if (!empty($preloadedGame['visitor_color'])) {
           : null;
         // Live board rendering is driven by the canonical API FEN. PGN-derived
         // history FENs are only authoritative while reviewing history.
+        const preservePreview = isLiveMode() && !resetSelection && pendingMove &&
+          selectionStateFingerprint === stateFingerprint(canonicalState);
         const fenToLoad = isLiveMode()
-          ? canonicalState.fen
+          ? (preservePreview ? game.fen() : canonicalState.fen)
           : (historyFenForSelection || canonicalState.fen);
         const shouldRenderPosition = gameChanged || isLiveMode() || (fenToLoad !== game.fen());
 
         if (shouldRenderPosition) {
           try {
-            game.load(fenToLoad);
+            if (!game.load(fenToLoad)) throw new Error('Invalid position FEN');
           } catch (err) {
             blockForStateError(isLiveMode()
               ? 'Invalid canonical FEN from server. Refresh later.'
@@ -2008,9 +2217,12 @@ if (!empty($preloadedGame['visitor_color'])) {
           }
         }
         const liveSquares = deriveLastMoveSquares(canonicalState);
-        lastMoveSquares = isHistoryLiveView() ? liveSquares : getSelectedHistoryMove();
+        lastMoveSquares = preservePreview
+          ? { from: pendingMove.from, to: pendingMove.to }
+          : (isHistoryLiveView() ? liveSquares : getSelectedHistoryMove());
 
-        const detected = computeGameOverFromFen(fenToLoad);
+        // An unsubmitted mating preview must not end the canonical live game.
+        const detected = computeGameOverFromFen(isLiveMode() ? canonicalState.fen : fenToLoad);
         const forcedOver = canonicalState.status && canonicalState.status !== 'active';
         applyGameOverUI({
           over: forcedOver || detected.over,
@@ -2026,7 +2238,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
 
         updateStatusMessage();
-        if (isLiveMode()) {
+        if (isLiveMode() && !preservePreview) {
           warnOnLiveFenTurnMismatch(canonicalState, fenToLoad);
         }
 
@@ -2055,6 +2267,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         latestFetchedStateFingerprint = incomingFingerprint;
         const currentFingerprint = stateFingerprint(state);
         const hasChanged = !currentFingerprint || currentFingerprint !== incomingFingerprint;
+        const promotionInterrupted = hasChanged && isPromotionFlowActive();
 
         handlePromotionInterrupted(incomingFingerprint, { queued: allowQueue });
 
@@ -2088,29 +2301,55 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         const shouldResetSelection = resetSelection || hasChanged;
         applyStateData(newState, { resetSelection: shouldResetSelection });
+        if (promotionInterrupted) {
+          setStatus('Game updated while choosing promotion; please retry.', 'muted');
+        }
       }
 
       async function fetchState(options = {}) {
         const { resetSelection = true, allowQueue = false, silent = false } = options;
+        const requestId = ++stateRequestId;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
         if (!silent) {
+          refreshingState = true;
+          syncSubmissionControls();
           setStatus('Loading…', 'muted', { showSpinner: true });
         }
 
-        const recovered = !submitting ? await submissions.recover() : null;
-        const res = await fetch('api/state.php', { cache: 'no-store' });
-        if (!res.ok) throw new Error('Failed to load state');
-        const json = await res.json();
-        if (!json || json.ok === false) {
-          const message = (json && json.message) ? json.message : 'Failed to load state';
-          throw new Error(message);
-        }
+        try {
+          const recovered = !submitting ? await submissions.recover() : null;
+          const res = await fetch('api/state.php', { cache: 'no-store', signal: controller.signal });
+          if (!res.ok) throw new Error('Failed to load state');
+          const json = await res.json();
+          if (!json || json.ok === false) {
+            const message = (json && json.message) ? json.message : 'Failed to load state';
+            throw new Error(message);
+          }
+          if (requestId !== stateRequestId) return;
 
-        handleIncomingState(json, { resetSelection, allowQueue });
-        if (submissions.pending && !submitting) {
-          setStatus('Previous move outcome unconfirmed. Submit move to retry safely.', 'error');
-          btnSubmit.disabled = false;
-        } else if (recovered) {
-          setStatus('Move accepted. Current board refreshed.', 'ok');
+          stateUnavailable = false;
+          connectionFailed = false;
+          connectionNotice.hidden = true;
+          handleIncomingState(json, recovered
+            ? { resetSelection: true, allowQueue: false }
+            : { resetSelection, allowQueue });
+          startPolling();
+          if (submissions.pending && !submitting) {
+            setStatus('Previous move outcome unconfirmed. Submit move to retry safely.', 'error');
+            syncSubmissionControls();
+          } else if (recovered) {
+            setStatus('Move accepted. Current board refreshed.', 'ok');
+          }
+        } catch (err) {
+          // A newer refresh owns the UI; an older failure must not lock it.
+          if (requestId === stateRequestId) throw err;
+        } finally {
+          clearTimeout(timeout);
+          if (requestId === stateRequestId) {
+            if (!silent) refreshingState = false;
+            updateHighlights();
+          }
         }
       }
 
@@ -2121,13 +2360,20 @@ if (!empty($preloadedGame['visitor_color'])) {
       function startPolling() {
         if (pollHandle) return;
         pollHandle = setInterval(() => {
+          if (submitting || refreshingState) return;
           fetchState({ resetSelection: false, allowQueue: true, silent: true }).catch((err) => {
+            connectionFailed = true;
+            connectionNotice.textContent = 'Could not refresh the live game. Use Refresh to reconnect before submitting.';
+            connectionNotice.hidden = false;
+            syncSubmissionControls();
+            updateHighlights();
             console.error('Polling failed', err);
           });
         }, 20000);
       }
 
       function applyQueuedStateOrFetch({ forceLive = false } = {}) {
+        if (submitting) return;
         if (forceLive) {
           updateViewState({ mode: 'live' });
         }
@@ -2160,6 +2406,13 @@ if (!empty($preloadedGame['visitor_color'])) {
         clearErrors();
         startPolling();
       }).catch(handleStateError);
+
+      btnCancel.addEventListener('click', cancelSelectedMove);
+      promotionChooser.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); cancelSelectedMove(); }
+        // Arrow keys here must not navigate the historical game behind the chooser.
+        if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) ev.stopPropagation();
+      });
 
       promotionButtons.forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -2202,6 +2455,9 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape' && (pendingMove || selectedSquare)) {
+          ev.preventDefault(); cancelSelectedMove(); return;
+        }
         if (isTypingContext(ev)) return;
         if (ev.key === 'ArrowLeft') {
           ev.preventDefault();
@@ -2227,7 +2483,8 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       btnSubmit.addEventListener('click', async () => {
-        if (submitting) return;
+        syncSubmissionControls();
+        if (submitting || btnSubmit.disabled) return;
         if (submissions.pending) { await sendVisitorMove(submissions.pending); return; }
         if (!pendingMove || !state) return;
         if (historyState && !isHistoryLiveView()) {
@@ -2282,11 +2539,17 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
         pendingMove = null;
         pendingBaseFen = null;
+        updateMovePreviewDisplay('');
         resetPromotionChooser();
         resetTurnstile();
         setSubmittingState(false);
         try { await fetchState(); }
-        catch (_) { setStatus('Move accepted. Board refresh failed; use Refresh to reload it.', 'ok'); }
+        catch (_) {
+          stateUnavailable = true;
+          syncSubmissionControls();
+          updateHighlights();
+          setStatus('Move accepted. Board refresh failed; use Refresh to reload it.', 'ok');
+        }
       }
 
       if (toggleNotationBtn) {

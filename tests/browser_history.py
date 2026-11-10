@@ -102,7 +102,7 @@ def main():
                                 }''', total)
                                 page.reload()
                                 for ply in range(total, -1, -1):
-                                    wait_history(page, f'Move {ply} of {total}')
+                                    wait_history(page, f'Reviewing ply {ply} of {total}')
                                     assert_position(page, data['frames'][ply], color)
                                     page.locator('#btnFlip').click()
                                     assert_position(page, data['frames'][ply], color)
