@@ -262,6 +262,7 @@ if (!empty($preloadedGame['visitor_color'])) {
                 </div>
               </div>
               <div id="notationMount" class="notation-mount"></div>
+              <p><a href="review.php">Review a separate annotated PGN</a></p>
             </div>
           </div>
         </div>

@@ -580,3 +580,78 @@ Desktop and 390px/320px screenshot checks also passed. Unchanged backend/rules
 suites were not rerun; production, physical-device, and screen-reader checks
 were not performed.
 
+## Phase 5 isolated annotated PGN review — 2026-11-07
+
+`review.php` is an independent browser-only page linked from the public page's
+Advanced details. Pasting a single PGN creates a separate static review board.
+There is no database bootstrap, live-state controller, CAPTCHA, submission helper,
+polling, URL import, upload, or browser-storage access on this page. The default
+intake is local paste; curated owner games, file upload, and live-game annotation
+attachments are not included. Initial implementation and verification were
+local; repository integration does not perform production deployment.
+
+The page reuses `packages/pgn-review/src/dom.js` for its board,
+`src/state.js` for navigation, the existing chess.js/opaque ID assets, and scoped
+package CSS. Its small controller receives no gameplay state or credentials.
+Start/Back/Forward/Final, native-button Flip, scoped keyboard navigation, original
+PGN copying and selected-FEN copying are independent of the live app. No framework,
+bundler, engine, or additional third-party dependency is introduced.
+
+`assets/pgn_annotations.js` follows the notebook's supplied-comment conventions
+without importing its DOM-coupled initializer. It replays a validated main line,
+retaining before/after FEN and annotations per ply. It accepts SAN suffix glyphs,
+common quality NAGs, explicit Lichess-style quality sentences, numeric evaluation
+changes, `[%eval ...]` including mate notation, and `SAN was best` comments.
+Narrative mentions alone do not establish a classification. Suggestions must be
+legal in the pre-move position to receive an arrow. All labels identify their
+supplied origin; no best move, evaluation, accuracy, or quality is calculated.
+Plain PGN receives no fabricated annotation.
+
+Side variations are omitted with an explicit main-line notice. Standard-chess
+FEN setups, including Black to move, are supported; other variants are rejected.
+Malformed comments/variations, illegal main-line moves, extra games, oversized
+input (200,000 characters), excessive nesting (32), and histories over 1,000 ply
+are rejected rather than repaired or truncated. Invalid imports leave the last
+successful review unchanged. Original source PGN remains available unchanged.
+
+Imported headers/comments are rendered as text, never HTML or fetched links.
+Annotation text, square-attached badges and suggested arrows toggle together.
+The SVG arrow uses a normalized 10×10 coordinate space, including gutters, and
+therefore follows resizing and Flip without observers. The annotation panel
+states that suggestions refer to the position before the selected move. Check
+indicators derive only from the bundled rules library. Clear removes the input,
+source, board, and imported metadata and returns focus to the input. Clipboard
+failure provides a manual-copy message; there is no silent persistence.
+
+### Verification and rollback
+
+```sh
+node --test tests/pgn_annotations.test.js
+PHP_BIN=php CHROMIUM_BIN=/usr/bin/chromium python3 tests/browser_annotations.py
+PHP_BIN=php CHROMIUM_BIN=/usr/bin/chromium python3 tests/browser_review.py
+PHP_BIN=php CHROMIUM_BIN=/usr/bin/chromium python3 tests/browser_chess.py
+```
+
+Parser tests cover supplied attribution, absent annotations, move association,
+nested/semicolon comments and variations, legal/illegal suggestions, FEN setup,
+malformed and bounded input, and HTML-like text. Browser checks at desktop,
+390px and 320px cover toggling, flip/resize geometry, keyboard navigation,
+literal text rendering, malformed-import preservation, replacement/clear,
+touch targets and viewport fit. They abort and fail on any game API, external,
+or write request; imported PGN must leave database/mail and browser storage
+unchanged. The fixture explicitly copies the new entrypoint/CSS until committed.
+
+Rollback the new page, three new assets, link in `index.php`, and Phase 5 tests
+together. No live-game data, schema, token, stored history, or dependency rollback
+is needed. General variation navigation, arbitrary annotation standards such as
+`[%cal]`/`[%csl]`, live-game annotation injection, accuracy scoring, generated
+analysis, generalized transpositions, and mouse-wheel navigation remain outside
+this implementation.
+
+Phase 5 results: PASS — 23 parser tests, 3 annotated-review browser scenarios,
+6 live review/metadata regressions, 16 gameplay scenarios, PHP/JavaScript/Python
+syntax, and `git diff --check`. Desktop and 320px annotation previews were
+visually inspected. All browser imports ran in disposable fixtures, with API,
+external, and write requests forbidden on the independent review page. Clipboard
+permissions, physical devices, and screen readers were not independently tested.
+
