@@ -2381,7 +2381,7 @@ textarea {
 
 .public-game .move-guide .submission-help { margin: 0; }
 .public-game .move-guide .status-line { margin: 0; font-weight: 400; }
-.public-game .move-guide[data-tone="error"] { border-color: var(--error); }
+
 
 .public-game .primary-buttons #btnSubmit { flex-shrink: 1; }
 
@@ -2389,3 +2389,11 @@ textarea {
 .public-game .primary-buttons button { font-size: 14px; }
 .public-game #btnSubmit:not([data-phase="ready"]) { background: var(--button-surface); color: var(--text-secondary); border-color: var(--border-strong); }
 .public-game #btnSubmit[data-phase="ready"]:hover:not(:disabled) { background: #29485e; color: #d8f1ff; }
+
+/* Traffic-light feedback, using quiet surfaces and readable state text. */
+.public-game .move-guide[data-tone="error"] { border-color: #d98b73; background: #2b2020; color: #edb8a7; }
+.public-game .move-guide[data-tone="warning"] { border-color: #c6a264; background: #29251b; color: #e6c98e; }
+.public-game .move-guide[data-tone="success"] { border-color: #79ab8d; background: #1b2923; color: #b7d8c1; }
+.public-game .move-guide .submission-help,
+.public-game .move-guide .status-line,
+.public-game .move-guide #statusMsg { color: inherit; font-weight: 400; }
