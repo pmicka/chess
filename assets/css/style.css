@@ -1803,7 +1803,7 @@ textarea {
 }
 
 .public-game #btnCancel {
-  align-self: flex-start;
+  align-self: center;
   width: auto;
   min-height: 40px;
 }
@@ -1918,6 +1918,7 @@ textarea {
 }
 
 .public-game .primary-buttons {
+  flex-wrap: nowrap;
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -2342,15 +2343,14 @@ textarea {
 .public-game .score-value { font-size: 22px; line-height: 1.2; font-weight: 600; }
 .public-game .game-details { margin: 0; min-width: 0; }
 
-/* Desktop board, navigation, and expanded notation share one left edge. */
+/* Desktop board and navigation share one left edge. */
 @media (min-width: 1024px) {
   .public-game .stage-card {
     grid-template-columns: minmax(0, 620px) minmax(304px, 1fr);
   }
   .public-game .board-stack { width: 100%; align-items: stretch; }
   .public-game .board-container { max-width: none; margin: 0; }
-  .public-game .history-controls,
-  .public-game .board-stack > .game-details { width: 100%; box-sizing: border-box; }
+  .public-game .history-controls { width: 100%; box-sizing: border-box; }
 }
 
 .public-game .live-game-heading #liveGameStatus { font-size: 20px; font-weight: 600; line-height: 1.3; }
@@ -2362,13 +2362,10 @@ textarea {
 }
 .public-game .game-watermark #scoreLastResult:empty { display: none; }
 .public-game .move-guide {
-  position: relative; display: flex; gap: 12px; align-items: center; padding: 10px 12px;
+  display: block; padding: 10px 12px; min-width: 0;
   border: 1px solid var(--accent); border-radius: 10px; background: #15202c;
-  color: var(--text-primary); box-shadow: 0 6px 18px rgba(0,0,0,.2); font-size: 14px; line-height: 1.5;
+  color: var(--text-primary); font-size: 14px; line-height: 1.5;
 }
-.public-game .move-guide::before { content: ''; position: absolute; top: -5px; left: 24px; width: 8px; height: 8px; background: #15202c; border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); transform: rotate(45deg); }
-.public-game .move-guide > span { flex: 1; min-width: 0; }
-.public-game .move-guide button { flex: 0 0 auto; min-width: 32px; min-height: 32px; padding: 0 6px; font-size: 20px; }
 .public-game #btnSubmit { transition: background-color .2s, color .2s, border-color .2s, box-shadow .2s; }
 .public-game #btnSubmit[data-phase="ready"] { animation: submit-ready 1s ease-out 2; border-color: var(--success); }
 .public-game #btnSubmit[data-phase="verification"] { animation: submit-awaiting .6s ease-out 1; }
@@ -2381,3 +2378,9 @@ textarea {
   .public-game #btnSubmit[data-phase] { animation: none; transition: none; }
 }
 .public-game .move-guide[hidden] { display: none; }
+
+.public-game .move-guide .submission-help { margin: 0; }
+.public-game .move-guide .status-line { margin: 0; font-weight: 400; }
+.public-game .move-guide[data-tone="error"] { border-color: var(--error); }
+
+.public-game .primary-buttons #btnSubmit { flex-shrink: 1; }

@@ -145,3 +145,16 @@ No production deployment or commit was made during validation.
 - Review squares accept explanatory clicks while selection/submission remain locked. Keyboard activation uses the same controller guard. No engine, backend, receipt transport, or anti-abuse logic changed.
 - New isolated tests passed at 390/1280px for piece guidance, exact 30-second timing, verification gating, ready phase, reduced motion, dismissal, cancellation, post-submit cleanup, review-click feedback, and return to Live. Focused layout/export checks passed at 320/390/768/1280px. Full interaction checks passed, and all 32 axe scans plus shared-style, reflow, reduced-motion, forced-color, landscape, and bounded-polling checks passed. Desktop/mobile screenshots visually reviewed; JavaScript syntax and diff checks passed.
 - Real-device, real CAPTCHA, manual contrast, screen-reader, and PHP/staging checks remain outstanding. No merge or deployment performed.
+
+## Unified information-column feedback — November 11, 2026
+
+- Moved move coaching into the existing instruction/error area of the information column. One styled panel shows either transient status/errors or contextual instructions/reminders, without duplicate visible messages. Removed the speech-bubble pointer, close button, and dismissal state. Verification-expiration/failure guidance takes priority over generic selected-move coaching; assertive error announcements remain.
+- Expanded game details stay below live actions and above score in the information column at every width. The toggle stays under the board. Removed breakpoint-driven node relocation; desktop board/control alignment is retained.
+- Focused controls/export tests passed at 320/390/768/1280px, including right-column details alignment and focus/disclosure across resizing. Coaching tests passed at 390/1280px for shared error/instruction presentation, no pointer/close control, reminder timing, CAPTCHA gating, cancellation/submission cleanup, reduced motion, and history guards. Full interaction checks and all 32 axe scans passed, along with shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling. Mobile and desktop screenshots visually reviewed. JavaScript syntax and diff checks passed.
+- Physical-device, real CAPTCHA, manual contrast/screen-reader, and PHP/staging checks remain separate. Not merged or deployed.
+
+## Stable Cancel action — November 11, 2026
+
+- Cancel now shares the Submit/Refresh row and stays visible, disabled until a piece or move can be cancelled. Submission and unresolved-receipt safeguards still disable cancellation. The preview row no longer appears merely to hold Cancel.
+- Focused checks passed at 320/390/768/1280px for same-row action geometry and initial disabled visibility. Full interaction checks passed for cancellation, promotion, receipt recovery/concurrency, stale state, verification, and history locks. A targeted 320px check verified selecting/cancelling and same-row Retry/Refresh/Cancel geometry without overflow. All 32 axe scans, reflow/text stress, reduced motion, forced colors, shared styles, landscape, and bounded polling passed. Narrow retry screenshot visually reviewed; JavaScript syntax and diff checks passed.
+- Real-device, real CAPTCHA, manual accessibility, and PHP/staging checks remain separate. Not merged or deployed.
