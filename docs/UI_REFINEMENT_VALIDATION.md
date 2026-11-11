@@ -182,3 +182,9 @@ No production deployment or commit was made during validation.
 - Added semantic red/amber/green feedback treatment. Errors use slightly muted orange-red, pending/action-required states use amber, and ready/accepted states use green. Existing text and assertive error announcements remain; ready messages still explicitly state that submission has not happened.
 - Coaching tests passed at 390/1280px with assertions for error, pending-verification, and ready tones. All 32 axe scans, shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling passed. Static text/surface contrast ratios are 9.03:1, 9.54:1, and 9.80:1 respectively. All three message panels visually reviewed; JavaScript syntax and diff checks passed.
 - No backend/submission behavior changes. Real-device, real Turnstile, manual screen-reader, and PHP/staging checks remain separate. Not merged or deployed.
+
+## Neutral idle and host-turn guidance — November 11, 2026
+
+- Default piece-selection instructions and host-turn waiting now use a neutral panel rather than amber. Host-turn text says “Waiting for the host to move. The board updates automatically; you can play next.” Active verification/selection and attention states retain amber; errors and ready states retain red/green.
+- Guidance tests passed at 390/1280px for neutral idle, host-turn text with either visitor color, automatic transition after submission, disabled Submit while waiting, and existing error/pending/ready tones. All 32 axe scans plus shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling passed. Neutral idle/host panels visually reviewed; JavaScript syntax and diff checks passed.
+- No backend/submission changes. Physical-device, real Turnstile, manual accessibility, and PHP/staging checks remain separate. Not merged or deployed.

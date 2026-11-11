@@ -683,9 +683,13 @@ if (!empty($preloadedGame['visitor_color'])) {
       let submitPhase = '';
       const moveGuide = document.getElementById('moveGuide');
       function updateFeedbackTone() {
-        moveGuide.dataset.tone = statusMsg.textContent
-          ? (statusMsg.classList.contains('error') ? 'error' : statusMsg.classList.contains('ok') ? 'success' : 'warning')
-          : (submitPhase === 'ready' ? 'success' : 'warning');
+        const attention = submitPhase === 'verification' || selectedSquare || submitting ||
+          refreshingState || submissions.pending || selectionIsStale || queuedServerState ||
+          connectionFailed || stateUnavailable || reviewGuideRequested;
+        moveGuide.dataset.tone = statusMsg.textContent && statusMsg.classList.contains('error') ? 'error'
+          : statusMsg.textContent && statusMsg.classList.contains('ok') ? 'success'
+          : submitPhase === 'ready' ? 'success'
+          : attention ? 'warning' : 'neutral';
       }
       function showMoveGuide(message) {
         if (submissionHelp.textContent !== message) submissionHelp.textContent = message;
@@ -750,7 +754,7 @@ if (!empty($preloadedGame['visitor_color'])) {
                  selectionStateFingerprint !== latestFetchedStateFingerprint)) {
           reason = 'The live game changed. Refresh before selecting another move.';
         } else if (gameOverState.over || state.status !== 'active') reason = '';
-        else if (!isVisitorsTurn()) reason = 'Moves happen asynchronously. The board refreshes automatically.';
+        else if (!isVisitorsTurn()) reason = 'Waiting for the host to move. The board updates automatically; you can play next.';
         else if (!pendingMove) reason = selectedSquare ? 'Choose a highlighted destination.' : 'Choose a piece, then a destination.';
         else if (!turnstileToken) reason = verificationMessage || 'Checking security… Your move is not submitted.';
         else {

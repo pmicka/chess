@@ -2397,3 +2397,5 @@ textarea {
 .public-game .move-guide .submission-help,
 .public-game .move-guide .status-line,
 .public-game .move-guide #statusMsg { color: inherit; font-weight: 400; }
+
+.public-game .move-guide[data-tone="neutral"] { border-color: var(--border-strong); background: #161c24; color: var(--text-secondary); }
