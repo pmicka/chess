@@ -1743,20 +1743,25 @@ textarea {
   min-height: 44px;
 }
 
+.public-game .sq.last {
+  box-shadow: none;
+  background-image: linear-gradient(var(--board-last), var(--board-last));
+}
+
 .public-game .sq.pick {
-  outline-color: #102a43;
+  outline: none;
+  background-image: linear-gradient(var(--board-selected), var(--board-selected));
 }
 
 .public-game .sq.hint {
-  box-shadow: inset 0 0 0 3px #102a43;
+  box-shadow: none;
 }
 
 .public-game .sq.hint::before {
-  border: 2px dashed #102a43;
-}
-
-.public-game .sq.last {
-  box-shadow: inset 0 0 0 3px #442b00;
+  inset: 37%;
+  border: 0;
+  border-radius: 50%;
+  background: var(--board-target);
 }
 
 .public-game [hidden] {
@@ -1866,6 +1871,9 @@ textarea {
 }
 
 .public-game #board {
+  --board-last: rgba(155, 199, 0, 0.35);
+  --board-selected: rgba(20, 85, 30, 0.35);
+  --board-target: rgba(0, 0, 0, 0.65);
   grid-template-columns: 0.35fr repeat(8, 1fr) 0.35fr;
   grid-template-rows: 0.35fr repeat(8, 1fr) 0.35fr;
   /* Preserve the essential board/piece contrast in forced-colors mode. */

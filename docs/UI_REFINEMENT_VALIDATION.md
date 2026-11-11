@@ -94,3 +94,10 @@ No production deployment or commit was made during validation.
 - Re-ran interaction checks at 320/390/768/1280px for both sides, all 77 rule/annotation tests, and all 32 axe state/viewport scans: no automatic violations. Composited text-contrast review remains incomplete.
 - Shared-style and standalone review checks passed. After 20 polls, 288 live elements, 621 renderer DOM nodes, and 270 listeners remained stable after garbage collection. These are fixture diagnostics with the same limitations described above.
 - PHP business logic, APIs, and submission transport remain unchanged. The stylesheet hash expression is the only added PHP code; PHP lint/integration and real-device/staging checks remain outstanding.
+
+## Simpler board markers — November 11, 2026
+
+- Replaced the public board's dark outlines and dashed destination boxes with soft green selection fills, olive last-move fills, small destination dots. Capture rings were removed after visual review.
+- Legal destination hints include en passant and clear when a selection changes or is cancelled. Captures retain their accessible description and use the common destination-dot styling. The additional class and accessible capture description are presentation only; legal moves and submission behavior are unchanged.
+- Kept the distinct two-tone keyboard-focus indicator. Contrast checks now test destination dots with their alpha composited against both square colors; they do not claim the translucent fills satisfy a 3:1 boundary contrast threshold. Composited visual review remains part of the manual checklist.
+- Interaction checks, capture/en-passant checks, all 32 axe state/viewport scans, shared-style/review checks, and bounded polling checks passed. No automatic accessibility violations; manual contrast, real-device, and PHP/staging limitations remain as above.

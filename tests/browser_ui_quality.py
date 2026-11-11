@@ -76,14 +76,17 @@ def contrast(foreground, background):
     return (max(a, b) + .05) / (min(a, b) + .05)
 
 
-def marker_contrast(page, selector, prop):
-    color = page.locator(selector).first.evaluate('(e,p)=>getComputedStyle(e)[p]', prop)
-    foreground = tuple(map(int, re.findall(r'\d+', color)[:3]))
+def marker_contrast(page, selector, prop, pseudo=None):
+    color = page.locator(selector).first.evaluate('(e,args)=>getComputedStyle(e,args[1])[args[0]]', [prop, pseudo])
+    channels = list(map(float, re.findall(r'[\d.]+', color)))
+    foreground = channels[:3]
+    alpha = channels[3] if len(channels) > 3 else 1
     ratios = []
     for shade in ('.light', '.dark'):
         color = page.locator('#board .sq' + shade).first.evaluate('(e)=>getComputedStyle(e).backgroundColor')
         background = tuple(map(int, re.findall(r'\d+', color)[:3]))
-        ratio = contrast(foreground, background)
+        composited = tuple(round(f * alpha + b * (1 - alpha)) for f, b in zip(foreground, background))
+        ratio = contrast(composited, background)
         assert ratio >= 3, (selector, foreground, background, ratio)
         ratios.append(round(ratio, 2))
     return ratios
@@ -110,11 +113,17 @@ def quality(browser, width, axe_path):
     geometry(page)
     results.append(audit(page, 'initial', axe_path))
 
+    f.square('f3').click()
+    assert f.square('e5').evaluate('(e)=>e.classList.contains("hint-capture")')
+    assert f.square('e5').evaluate('(e)=>getComputedStyle(e,"::before").borderTopWidth') == '0px'
+    marker_ratios = {'capture_destination_dot': marker_contrast(page, '#board .hint-capture', 'backgroundColor', '::before')}
     f.square('f1').click()
-    marker_ratios = {'selected': marker_contrast(page, '#board .pick', 'outlineColor'),
-                     'legal_destination': marker_contrast(page, '#board .hint', 'boxShadow')}
+    assert page.locator('#board .hint-capture').count() == 0
+    assert page.locator('#board .pick').evaluate('(e)=>getComputedStyle(e).outlineStyle') == 'none'
+    marker_ratios['legal_destination_dot'] = marker_contrast(page, '#board .hint', 'backgroundColor', '::before')
     f.square('b5').click()
-    marker_ratios['last_move'] = marker_contrast(page, '#board .last', 'boxShadow')
+    assert page.locator('#board .last').first.evaluate('(e)=>getComputedStyle(e).boxShadow') == 'none'
+    assert page.locator('#board .last').first.evaluate('(e)=>getComputedStyle(e).backgroundImage') != 'none'
     geometry(page)
     results.append(audit(page, 'candidate awaiting CAPTCHA', axe_path))
     f.verify()

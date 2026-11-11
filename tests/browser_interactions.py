@@ -346,6 +346,16 @@ def main():
             f.verify();assert f.page.locator('#btnSubmit').is_disabled()
             f.close()
         print('PASS correct Host/World game-over copy')
+        for pgn, source, target in [('1. e4 d5', 'e4', 'd5'), ('1. e4 a6 2. e5 d5', 'e5', 'd6')]:
+            f = Fixture(browser, pgn=pgn)
+            f.square(source).click()
+            assert f.square(target).evaluate('(e)=>e.classList.contains("hint-capture")')
+            assert 'capture' in f.square(target).get_attribute('aria-label')
+            f.page.locator('#btnCancel').click()
+            assert f.page.locator('#board .hint, #board .hint-capture').count() == 0
+            assert not f.posts
+            f.close()
+        print('PASS capture and en-passant indicators clear with selection')
         browser.close()
 
 
