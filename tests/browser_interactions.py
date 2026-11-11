@@ -215,6 +215,30 @@ def main():
                 f.close()
                 print('PASS keyboard, verification, cancellation, submit, history, notation', width, color)
 
+        for color, pgn, source, target, next_piece, expected in (
+            ('white', '1. e4 e5', 'g1', 'f3', 'b1', {'e7', 'e5'}),
+            ('black', '1. e4', 'e7', 'e5', 'g8', {'e2', 'e4'}),
+        ):
+            f = Fixture(browser, color=color, pgn=pgn)
+            page = f.page
+            def last_squares():
+                return set(page.locator('#board .last').evaluate_all('(els)=>els.map(e=>e.getAttribute("aria-label").split(",")[0])'))
+            f.select(source, target)
+            assert last_squares() == {source, target}
+            f.square(next_piece).click()
+            assert last_squares() == expected
+            assert 'selected' in f.square(next_piece).get_attribute('aria-label')
+            assert 'last move' not in f.square(target).get_attribute('aria-label')
+            page.locator('#btnCancel').click()
+            f.select(source, target)
+            f.square('a3').click()
+            assert last_squares() == expected
+            assert page.locator('#board .pick, #board .hint').count() == 0
+            assert page.locator('.move-preview-row').is_hidden()
+            assert not f.posts
+            f.close()
+            print('PASS restored preview resets last-move highlights and accessible labels', color)
+
         for outcome in ('lost', 'malformed', 'reject'):
             f = Fixture(browser)
             f.outcome = outcome

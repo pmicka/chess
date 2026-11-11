@@ -158,3 +158,9 @@ No production deployment or commit was made during validation.
 - Cancel now shares the Submit/Refresh row and stays visible, disabled until a piece or move can be cancelled. Submission and unresolved-receipt safeguards still disable cancellation. The preview row no longer appears merely to hold Cancel.
 - Focused checks passed at 320/390/768/1280px for same-row action geometry and initial disabled visibility. Full interaction checks passed for cancellation, promotion, receipt recovery/concurrency, stale state, verification, and history locks. A targeted 320px check verified selecting/cancelling and same-row Retry/Refresh/Cancel geometry without overflow. All 32 axe scans, reflow/text stress, reduced motion, forced colors, shared styles, landscape, and bounded polling passed. Narrow retry screenshot visually reviewed; JavaScript syntax and diff checks passed.
 - Real-device, real CAPTCHA, manual accessibility, and PHP/staging checks remain separate. Not merged or deployed.
+
+## Restored-position highlights — November 11, 2026
+
+- Fixed restored move previews retaining their abandoned source/destination markers. The shared restore path now resets last-move markers to the displayed live/history position before rerendering pieces and accessible square descriptions.
+- Regression coverage checks white and black previews, selecting another piece, clicking an empty square, canonical last-move markers, cleared preview/hints, and accessible labels, without submitting moves. The full interaction suite passed, including promotion, stale state, receipt recovery, concurrency, verification, and history guards. JavaScript syntax and diff checks passed.
+- No CSS, server validation, CAPTCHA, or submission transport changes. Not merged or deployed.

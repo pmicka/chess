@@ -951,7 +951,9 @@ if (!empty($preloadedGame['visitor_color'])) {
         const hadPending = Boolean(pendingBaseFen);
         if (restore && pendingBaseFen) {
           try {
-            game.load(pendingBaseFen);
+            if (game.load(pendingBaseFen)) {
+              lastMoveSquares = isHistoryLiveView() ? deriveLastMoveSquares(state) : getSelectedHistoryMove();
+            }
           } catch (err) {
             // ignore restore errors
           }
