@@ -34,6 +34,9 @@ def main():
                 assert e['padding'] == ('0px 3px' if mobile else '0px 12px')
                 assert e['radius'] == '8px'
             assert controls[-1]['w'] == pill_width and controls[-1]['radius'] == '999px'
+            actions = [page.locator(s).bounding_box() for s in ('#btnSubmit', '#btnRefresh', '#btnCancel')]
+            assert max(b['y'] for b in actions)-min(b['y'] for b in actions) < 1
+            assert page.locator('#btnCancel').is_visible() and page.locator('#btnCancel').is_disabled()
             assert page.locator('#btnSubmit').bounding_box()['height'] == 40
             assert page.locator('#btnSubmit').bounding_box()['width'] < 150
             assert page.locator('.history-controls').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
@@ -51,21 +54,23 @@ def main():
             assert page.locator('#notationMount').is_visible()
             assert page.evaluate("""() => {
               const before=(a,b)=>!!(document.querySelector(a).compareDocumentPosition(document.querySelector(b))&Node.DOCUMENT_POSITION_FOLLOWING);
-              return before('.history-controls','.live-game-summary') && before('.live-game-summary','.action-row') && before('#notationMount','#scoreboard') && (innerWidth>=1024 ? before('.history-controls','#notationMount') && before('#notationMount','.live-game-summary') : before('.action-row','#notationMount'));
+              return before('.history-controls','.live-game-summary') && before('.live-game-summary','.action-row') && before('#notationMount','#scoreboard') && before('.action-row','#notationMount');
             }""")
             assert page.locator('.live-game-facts dd, .game-meta dd, .submission-help, .score-last').evaluate_all("els=>els.every(e=>getComputedStyle(e).fontSize==='14px'&&getComputedStyle(e).fontWeight==='400')")
             assert page.locator('.live-game-facts dt, .game-meta dt, .score-label').evaluate_all("els=>els.every(e=>getComputedStyle(e).fontSize==='12px'&&getComputedStyle(e).textTransform==='none')")
             if width >= 1024:
-                boxes = [page.locator(selector).bounding_box() for selector in ('.board-container', '.history-controls', '#notationMount')]
-                assert max(b['x'] for b in boxes)-min(b['x'] for b in boxes) < 1
-                assert max(b['width'] for b in boxes)-min(b['width'] for b in boxes) < 1
-                assert boxes[2]['y'] >= boxes[1]['y']+boxes[1]['height']
+                boxes = [page.locator(selector).bounding_box() for selector in ('.board-container', '.history-controls')]
+                assert abs(boxes[0]['x']-boxes[1]['x']) < 1
+                assert abs(boxes[0]['width']-boxes[1]['width']) < 1
+                rail = page.locator('.control-bay').bounding_box()
+                details = page.locator('#notationMount').bounding_box()
+                assert abs(rail['x']-details['x']) < 1
+                assert abs(rail['width']-details['width']) < 1
                 page.locator('#copyFen').focus()
                 page.set_viewport_size({'width':390, 'height':900})
-                page.wait_for_function('document.querySelector("#notationMount").parentElement.classList.contains("control-bay")')
+                assert page.locator('#notationMount').evaluate('(e)=>e.parentElement.classList.contains("control-bay")')
                 assert page.locator('#copyFen').evaluate('(e)=>e===document.activeElement')
                 page.set_viewport_size({'width':width, 'height':900})
-                page.wait_for_function('document.querySelector("#notationMount").parentElement.classList.contains("board-stack")')
                 assert toggle.get_attribute('aria-expanded') == 'true'
             assert page.locator('.notation-readout').count() == 0
             page.locator('#copyFen').click()

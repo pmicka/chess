@@ -169,10 +169,6 @@ if (!empty($preloadedGame['visitor_color'])) {
             </button>
           </div>
         </div>
-        <aside id="moveGuide" class="move-guide" aria-label="Move guidance" hidden>
-          <span id="moveGuideText" role="status" aria-live="polite"></span>
-          <button id="dismissMoveGuide" type="button" class="secondary" aria-label="Dismiss move guidance">×</button>
-        </aside>
       </div>
       <div class="control-bay">
         <section class="live-game-summary" aria-labelledby="liveGameStatus">
@@ -194,23 +190,25 @@ if (!empty($preloadedGame['visitor_color'])) {
           </div>
         </div>
         <div class="control-row action-row">
+          <div class="move-preview-row" hidden>
+            <p class="muted selected-move" hidden>
+              Not submitted: <code id="movePreview">none</code>
+            </p>
+          </div>
+          <aside id="moveGuide" class="move-guide" aria-label="Game guidance">
           <div class="status-stack" hidden>
             <div class="status-line" aria-live="polite">
               <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
               <span id="statusMsg" class="muted"></span>
             </div>
           </div>
-          <div class="move-preview-row" hidden>
-            <p class="muted selected-move" hidden>
-              Not submitted: <code id="movePreview">none</code>
-            </p>
-            <button id="btnCancel" class="secondary button-compact" type="button" aria-label="Cancel selection" hidden>Cancel</button>
-          </div>
-          <p id="submissionHelp" class="submission-help" role="status" aria-live="polite"></p>
+            <p id="submissionHelp" class="submission-help" role="status" aria-live="polite"></p>
+          </aside>
           <div class="action-stack">
             <div class="primary-buttons">
               <button id="btnSubmit" aria-describedby="submissionHelp" disabled>Submit move</button>
               <button id="btnRefresh">Refresh</button>
+              <button id="btnCancel" class="secondary button-compact" type="button" aria-label="Cancel selection" disabled>Cancel</button>
             </div>
             <div class="turnstile-wrap" hidden>
               <div
@@ -363,21 +361,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       const btnLive = document.getElementById('btnLive');
       const notationMount = document.getElementById('notationMount');
       const toggleNotationBtn = document.getElementById('toggleNotation');
-      // Keep review content with the board on desktop while retaining the
-      // action-first reading order on narrow screens. Move the existing node
-      // so disclosure state, copy handlers, and accessible IDs stay intact.
-      const desktopGameLayout = window.matchMedia('(min-width: 1024px)');
-      function placeGameDetails() {
-        const active = document.activeElement;
-        if (desktopGameLayout.matches) {
-          document.querySelector('.board-stack').appendChild(notationMount);
-        } else {
-          document.getElementById('scoreboard').before(notationMount);
-        }
-        if (active && notationMount.contains(active)) active.focus({ preventScroll: true });
-      }
-      placeGameDetails();
-      desktopGameLayout.addEventListener('change', placeGameDetails);
       const snapshotBlock = document.getElementById('gameSnapshot');
       const snapshotOpeningEl = document.getElementById('snapshotOpening');
       const snapshotPlyEl = document.getElementById('snapshotPly');
@@ -692,34 +675,19 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
-      let guideKey = '';
-      let dismissedGuideKey = '';
       let reminderTimer = null;
       let reminderMoveKey = '';
       let reminderDue = false;
       let reviewGuideRequested = false;
       let submitPhase = '';
       const moveGuide = document.getElementById('moveGuide');
-      const moveGuideText = document.getElementById('moveGuideText');
-
-      function showMoveGuide(key, message) {
-        guideKey = key;
-        const visible = Boolean(message) && dismissedGuideKey !== key;
-        moveGuide.hidden = !visible;
-        if (visible && moveGuideText.textContent !== message) moveGuideText.textContent = message;
+      function showMoveGuide(message) {
+        if (submissionHelp.textContent !== message) submissionHelp.textContent = message;
+        submissionHelp.hidden = Boolean(statusMsg.textContent) || !message;
+        moveGuide.hidden = !statusMsg.textContent && !message;
       }
-      function dismissMoveGuide() {
-        dismissedGuideKey = guideKey;
-        const restoreFocus = moveGuide.contains(document.activeElement);
-        moveGuide.hidden = true;
-        if (restoreFocus) findSquareEl(focusedSquare)?.focus({ preventScroll: true });
-      }
-      document.getElementById('dismissMoveGuide').addEventListener('click', dismissMoveGuide);
-      document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && !moveGuide.hidden) dismissMoveGuide();
-      });
 
-      function syncMoveGuidance(ready) {
+      function syncMoveGuidance(ready, reason = submissionHelp.textContent) {
         const reviewing = !isHistoryLiveView();
         if (!reviewing) reviewGuideRequested = false;
         const eligible = !reviewing && isVisitorsTurn() && pendingMove &&
@@ -732,7 +700,6 @@ if (!empty($preloadedGame['visitor_color'])) {
           reminderTimer = null;
           reminderMoveKey = moveKey;
           reminderDue = false;
-          dismissedGuideKey = '';
           if (moveKey) reminderTimer = setTimeout(() => {
             reminderDue = true;
             syncSubmissionControls();
@@ -744,17 +711,16 @@ if (!empty($preloadedGame['visitor_color'])) {
           submitPhase = phase;
         }
         if (reviewing && reviewGuideRequested) {
-          showMoveGuide('review', 'You’re reviewing an earlier position. Choose Live to return to the game before moving.');
+          showMoveGuide('You’re reviewing an earlier position. Choose Live to return to the game before moving.');
         } else if (eligible) {
-          const message = reminderDue
+          const message = !turnstileToken && verificationMessage ? verificationMessage : reminderDue
             ? (ready ? 'Your move is still waiting. Choose Submit move to send it.' : 'Your move is not submitted. Complete verification, then choose Submit move.')
             : (ready ? 'Move selected. Choose Submit move to confirm it.' : 'Move selected. Complete verification, then choose Submit move.');
-          showMoveGuide(`${moveKey}:${reminderDue ? 'reminder' : phase}`, message);
-        } else if (!reviewing && selectedSquare && !submitting && !gameOverState.over && !selectionIsStale && !connectionFailed) {
-          showMoveGuide(`piece:${selectedSquare}`, 'Choose a highlighted destination for this piece.');
+          showMoveGuide(message);
+        } else if (!reviewing && selectedSquare && !submitting && !gameOverState.over && !selectionIsStale && !connectionFailed && !refreshingState && !submissions.pending && !stateUnavailable && !queuedServerState) {
+          showMoveGuide('Choose a highlighted destination for this piece.');
         } else {
-          showMoveGuide('', '');
-          dismissedGuideKey = '';
+          showMoveGuide(reason);
         }
       }
 
@@ -787,13 +753,10 @@ if (!empty($preloadedGame['visitor_color'])) {
         btnSubmit.disabled = !ready;
         const submitLabel = submitting ? 'Submitting…' : submissions.pending ? 'Retry same move' : 'Submit move';
         if (btnSubmit.textContent !== submitLabel) btnSubmit.textContent = submitLabel;
-        if (submissionHelp.textContent !== reason) submissionHelp.textContent = reason;
-        submissionHelp.hidden = !reason || Boolean(statusMsg.textContent);
-        movePreviewRow.hidden = !(pendingMove || selectedSquare) || Boolean(submissions.pending);
-        btnCancel.hidden = !(pendingMove || selectedSquare) || Boolean(submissions.pending);
-        btnCancel.disabled = submitting;
+        movePreviewRow.hidden = !pendingMove || Boolean(submissions.pending);
+        btnCancel.disabled = !(pendingMove || selectedSquare) || submitting || Boolean(submissions.pending);
         boardEl.setAttribute('aria-busy', String(submitting || refreshingState));
-        syncMoveGuidance(ready);
+        syncMoveGuidance(ready, reason);
       }
 
       function cancelSelectedMove() {
@@ -1166,7 +1129,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       function onSquareClick(opaqueSquareId) {
         if (historyState && !isHistoryLiveView() && !submitting) {
           reviewGuideRequested = true;
-          dismissedGuideKey = '';
           syncMoveGuidance(false);
           return;
         }
@@ -1188,7 +1150,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const turn = game.turn();
         const visitorTurnChar = (visitorColor === 'white') ? 'w' : 'b';
         if (turn !== visitorTurnChar) {
-          statusMsg.textContent = 'Local state mismatch. Hit Refresh.';
+          setStatus('Local state mismatch. Hit Refresh.', 'error');
           return;
         }
 
@@ -1295,6 +1257,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         statusSpinner.classList.toggle('show', showSpinner);
         statusMsg.closest('.status-stack').hidden = !message;
         submissionHelp.hidden = Boolean(message) || !submissionHelp.textContent;
+        moveGuide.hidden = !message && !submissionHelp.textContent;
+        moveGuide.dataset.tone = message ? tone : 'muted';
       }
 
       function renderLiveMetadata(currentState) {

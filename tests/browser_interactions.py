@@ -145,7 +145,8 @@ def main():
                 page = f.page
                 source, target = ('e2', 'e4') if color == 'white' else ('e7', 'e5')
                 assert page.locator('#btnSubmit').is_disabled()
-                assert page.locator('#btnCancel').is_hidden()
+                assert page.locator('#btnCancel').is_visible()
+                assert page.locator('#btnCancel').is_disabled()
                 assert page.locator('#detailsToggle, #hudDetailsPanel, .board-help, #notationStatus').count() == 0
                 assert page.locator('#historyStatus, #historyNotice').count() == 0
                 assert page.locator('.status-stack').is_hidden()
@@ -223,7 +224,8 @@ def main():
             assert f.page.locator('.status-line').get_attribute('aria-live') == 'assertive'
             assert f.page.locator('#errorBox').count() == 0
             if outcome != 'reject':
-                assert f.page.locator('#btnCancel').is_hidden()
+                assert f.page.locator('#btnCancel').is_visible()
+                assert f.page.locator('#btnCancel').is_disabled()
                 assert f.page.locator('#btnSubmit').is_enabled()
                 first = f.posts[0]['submission_id']
                 if outcome == 'lost':
