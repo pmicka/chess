@@ -115,8 +115,8 @@ if (!empty($preloadedGame['visitor_color'])) {
   <main class="wrap public-game">
     <h1>The Internet Gambit</h1>
     <p class="subhead meta-line">
-      <span>Visitors play <strong id="visitorColorLabel">black</strong></span>
-      <span>Host plays <strong id="hostColorLabel">white</strong></span>
+      <span>Visitors · <b id="visitorColorLabel">black</b></span>
+      <span>Host · <b id="hostColorLabel">white</b></span>
       <a class="about-link" href="#about">About</a>
     </p>
 

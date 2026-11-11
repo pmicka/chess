@@ -188,3 +188,8 @@ No production deployment or commit was made during validation.
 - Default piece-selection instructions and host-turn waiting now use a neutral panel rather than amber. Host-turn text says “Waiting for the host to move. The board updates automatically; you can play next.” Active verification/selection and attention states retain amber; errors and ready states retain red/green.
 - Guidance tests passed at 390/1280px for neutral idle, host-turn text with either visitor color, automatic transition after submission, disabled Submit while waiting, and existing error/pending/ready tones. All 32 axe scans plus shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling passed. Neutral idle/host panels visually reviewed; JavaScript syntax and diff checks passed.
 - No backend/submission changes. Physical-device, real Turnstile, manual accessibility, and PHP/staging checks remain separate. Not merged or deployed.
+
+## Minimal player ownership labels — November 11, 2026
+
+- Shortened title metadata to Visitors · color and Host · color. Removed bold badges; labels use regular 14px type and muted/secondary colors, with matching About sizing. Shared host/review styles are unaffected.
+- Isolated browser checks passed at 320/390/768/1280px for role/color text, regular weight, dynamic ownership values, and no horizontal overflow. Mobile metadata screenshot visually reviewed; diff check passed. No gameplay/controller changes. Not merged or deployed.
