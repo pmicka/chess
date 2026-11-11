@@ -51,10 +51,22 @@ def main():
             assert page.locator('#notationMount').is_visible()
             assert page.evaluate("""() => {
               const before=(a,b)=>!!(document.querySelector(a).compareDocumentPosition(document.querySelector(b))&Node.DOCUMENT_POSITION_FOLLOWING);
-              return before('.history-controls','.live-game-summary') && before('.live-game-summary','.action-row') && before('.action-row','#notationMount') && before('#notationMount','#scoreboard');
+              return before('.history-controls','.live-game-summary') && before('.live-game-summary','.action-row') && before('#notationMount','#scoreboard') && (innerWidth>=1024 ? before('.history-controls','#notationMount') && before('#notationMount','.live-game-summary') : before('.action-row','#notationMount'));
             }""")
             assert page.locator('.live-game-facts dd, .game-meta dd, .submission-help, .score-last').evaluate_all("els=>els.every(e=>getComputedStyle(e).fontSize==='14px'&&getComputedStyle(e).fontWeight==='400')")
             assert page.locator('.live-game-facts dt, .game-meta dt, .score-label').evaluate_all("els=>els.every(e=>getComputedStyle(e).fontSize==='12px'&&getComputedStyle(e).textTransform==='none')")
+            if width >= 1024:
+                boxes = [page.locator(selector).bounding_box() for selector in ('.board-container', '.history-controls', '#notationMount')]
+                assert max(b['x'] for b in boxes)-min(b['x'] for b in boxes) < 1
+                assert max(b['width'] for b in boxes)-min(b['width'] for b in boxes) < 1
+                assert boxes[2]['y'] >= boxes[1]['y']+boxes[1]['height']
+                page.locator('#copyFen').focus()
+                page.set_viewport_size({'width':390, 'height':900})
+                page.wait_for_function('document.querySelector("#notationMount").parentElement.classList.contains("control-bay")')
+                assert page.locator('#copyFen').evaluate('(e)=>e===document.activeElement')
+                page.set_viewport_size({'width':width, 'height':900})
+                page.wait_for_function('document.querySelector("#notationMount").parentElement.classList.contains("board-stack")')
+                assert toggle.get_attribute('aria-expanded') == 'true'
             assert page.locator('.notation-readout').count() == 0
             page.locator('#copyFen').click()
             assert page.evaluate('window.copied.at(-1)') == f.state['fen']

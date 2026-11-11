@@ -130,3 +130,18 @@ No production deployment or commit was made during validation.
 - Moved expandable details below live status/actions and above all-time score, preserving this order in the desktop rail and mobile document flow. Removed the duplicate timestamp from details.
 - Focused tests verify document order, computed type styles, disclosure, history/preview exports, clipboard failures, and submission locking at 320/390/768/1280px. All passed. All 32 axe scans, shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling passed. Mobile and desktop screenshots visually reviewed; JavaScript syntax and diff checks passed. No backend or submission behavior changed.
 - Physical-device, real CAPTCHA, manual contrast, and PHP/staging checks remain outstanding. Not merged or deployed.
+
+## Desktop column alignment — November 11, 2026
+
+- Desktop board, history controls/toggle, and expanded details share a left-aligned column up to 620px wide, with a 24px gutter to the live-game rail. Removed the board container's automatic centering at desktop widths.
+- At the 1024px breakpoint, the existing details node moves between the board column and its mobile location before the score. This retains one set of IDs/handlers, disclosure state, and focused copy control through resizing. Mobile action-first order is preserved.
+- Focused tests passed at 320/390/768/1280px, including matching desktop edges/widths, details ordering, resize/focus/disclosure preservation, copy exports, and history locks. All 32 axe scans, reflow/text stress, reduced motion, forced colors, shared styles, landscape, and bounded polling passed. Desktop screenshot visually reviewed; JavaScript syntax and diff checks passed.
+- Real-device, manual contrast, real CAPTCHA, and PHP/staging checks remain separate. No merge or deployment performed.
+
+## Visitor heading, record footer, and move coaching — November 11, 2026
+
+- Replaced the top game-number heading with a prominent Visitor Turn state. Game number and previous result now live in the bottom-right record footer.
+- Added dismissible contextual move coaching and one reminder after 30 seconds per legal candidate. The reminder retains CAPTCHA gating and distinguishes pending verification from ready submission. Cancelling, submitting, history review, stale/unavailable state, and game completion clear eligibility. Phase-based Submit animations are bounded and disabled by reduced-motion preferences.
+- Review squares accept explanatory clicks while selection/submission remain locked. Keyboard activation uses the same controller guard. No engine, backend, receipt transport, or anti-abuse logic changed.
+- New isolated tests passed at 390/1280px for piece guidance, exact 30-second timing, verification gating, ready phase, reduced motion, dismissal, cancellation, post-submit cleanup, review-click feedback, and return to Live. Focused layout/export checks passed at 320/390/768/1280px. Full interaction checks passed, and all 32 axe scans plus shared-style, reflow, reduced-motion, forced-color, landscape, and bounded-polling checks passed. Desktop/mobile screenshots visually reviewed; JavaScript syntax and diff checks passed.
+- Real-device, real CAPTCHA, manual contrast, screen-reader, and PHP/staging checks remain outstanding. No merge or deployment performed.

@@ -93,7 +93,7 @@ def main():
                             assert page.locator('#liveGameId').inner_text() == '#1'
                             assert page.locator('#hostColorLabel').inner_text() == host
                             assert page.locator('#visitorColorLabel').inner_text() == color
-                            assert page.locator('#liveGameStatus').inner_text() == ('Your turn' if color == 'white' else 'Host to move')
+                            assert page.locator('#liveGameStatus').inner_text() == ('Visitor Turn' if color == 'white' else 'Host to move')
                             assert page.locator('#liveLastMove').inner_text() == 'a6'
                             assert page.locator('#liveUpdatedAt').get_attribute('datetime') == '2026-11-01T12:34:56Z'
                             assert '2:34 AM' in page.locator('#liveUpdatedAt').inner_text()
@@ -205,7 +205,7 @@ def main():
                             page.evaluate('window.phase0Poll()')
                             page.wait_for_function("document.querySelector('#updateBanner').classList.contains('show')")
                             assert page.locator('#liveLastMove').inner_text() == 'Ba4'
-                            assert page.locator('#liveGameStatus').inner_text() == ('Your turn' if color == 'black' else 'Host to move')
+                            assert page.locator('#liveGameStatus').inner_text() == ('Visitor Turn' if color == 'black' else 'Host to move')
                             assert page.locator('#liveUpdatedAt').get_attribute('datetime') == '2026-11-07T12:00:00Z'
                             assert page.locator('#snapshotLastMove').inner_text() == 'Bb5'
                             wait_history(page, 'Reviewing ply 5 of 6')

@@ -169,12 +169,15 @@ if (!empty($preloadedGame['visitor_color'])) {
             </button>
           </div>
         </div>
+        <aside id="moveGuide" class="move-guide" aria-label="Move guidance" hidden>
+          <span id="moveGuideText" role="status" aria-live="polite"></span>
+          <button id="dismissMoveGuide" type="button" class="secondary" aria-label="Dismiss move guidance">×</button>
+        </aside>
       </div>
       <div class="control-bay">
-        <section class="live-game-summary" aria-labelledby="liveGameTitle">
+        <section class="live-game-summary" aria-labelledby="liveGameStatus">
           <div class="live-game-heading">
-            <h2 id="liveGameTitle">Game <span id="liveGameId"></span></h2>
-            <span id="liveGameStatus" class="muted">Loading…</span>
+            <h2 id="liveGameStatus" aria-live="polite">Loading…</h2>
           </div>
           <dl class="live-game-facts">
             <div><dt>Latest move</dt><dd id="liveLastMove">—</dd></div>
@@ -251,10 +254,13 @@ if (!empty($preloadedGame['visitor_color'])) {
               <span class="score-value" id="scoreDrawValue">0</span>
             </div>
           </div>
-          <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
         </section>
 
       </div>
+      <footer class="game-watermark" aria-label="Game record">
+        <span>Game <span id="liveGameId"></span></span>
+        <span id="scoreLastResult"></span>
+      </footer>
     </div>
 
     <section id="about" class="about-section" aria-labelledby="about-heading">
@@ -357,6 +363,21 @@ if (!empty($preloadedGame['visitor_color'])) {
       const btnLive = document.getElementById('btnLive');
       const notationMount = document.getElementById('notationMount');
       const toggleNotationBtn = document.getElementById('toggleNotation');
+      // Keep review content with the board on desktop while retaining the
+      // action-first reading order on narrow screens. Move the existing node
+      // so disclosure state, copy handlers, and accessible IDs stay intact.
+      const desktopGameLayout = window.matchMedia('(min-width: 1024px)');
+      function placeGameDetails() {
+        const active = document.activeElement;
+        if (desktopGameLayout.matches) {
+          document.querySelector('.board-stack').appendChild(notationMount);
+        } else {
+          document.getElementById('scoreboard').before(notationMount);
+        }
+        if (active && notationMount.contains(active)) active.focus({ preventScroll: true });
+      }
+      placeGameDetails();
+      desktopGameLayout.addEventListener('change', placeGameDetails);
       const snapshotBlock = document.getElementById('gameSnapshot');
       const snapshotOpeningEl = document.getElementById('snapshotOpening');
       const snapshotPlyEl = document.getElementById('snapshotPly');
@@ -671,6 +692,72 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
+      let guideKey = '';
+      let dismissedGuideKey = '';
+      let reminderTimer = null;
+      let reminderMoveKey = '';
+      let reminderDue = false;
+      let reviewGuideRequested = false;
+      let submitPhase = '';
+      const moveGuide = document.getElementById('moveGuide');
+      const moveGuideText = document.getElementById('moveGuideText');
+
+      function showMoveGuide(key, message) {
+        guideKey = key;
+        const visible = Boolean(message) && dismissedGuideKey !== key;
+        moveGuide.hidden = !visible;
+        if (visible && moveGuideText.textContent !== message) moveGuideText.textContent = message;
+      }
+      function dismissMoveGuide() {
+        dismissedGuideKey = guideKey;
+        const restoreFocus = moveGuide.contains(document.activeElement);
+        moveGuide.hidden = true;
+        if (restoreFocus) findSquareEl(focusedSquare)?.focus({ preventScroll: true });
+      }
+      document.getElementById('dismissMoveGuide').addEventListener('click', dismissMoveGuide);
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !moveGuide.hidden) dismissMoveGuide();
+      });
+
+      function syncMoveGuidance(ready) {
+        const reviewing = !isHistoryLiveView();
+        if (!reviewing) reviewGuideRequested = false;
+        const eligible = !reviewing && isVisitorsTurn() && pendingMove &&
+          !promotionPending && !submitting && !submissions.pending && !refreshingState &&
+          !stateUnavailable && !connectionFailed && !selectionIsStale && !queuedServerState && !gameOverState.over;
+        const moveKey = eligible
+          ? `${selectionStateFingerprint}:${pendingMove.from}:${pendingMove.to}:${pendingMove.promotion || ''}` : '';
+        if (moveKey !== reminderMoveKey) {
+          clearTimeout(reminderTimer);
+          reminderTimer = null;
+          reminderMoveKey = moveKey;
+          reminderDue = false;
+          dismissedGuideKey = '';
+          if (moveKey) reminderTimer = setTimeout(() => {
+            reminderDue = true;
+            syncSubmissionControls();
+          }, 30000);
+        }
+        const phase = submitting ? 'submitting' : ready && eligible ? 'ready' : eligible ? 'verification' : 'idle';
+        if (phase !== submitPhase) {
+          btnSubmit.dataset.phase = phase;
+          submitPhase = phase;
+        }
+        if (reviewing && reviewGuideRequested) {
+          showMoveGuide('review', 'You’re reviewing an earlier position. Choose Live to return to the game before moving.');
+        } else if (eligible) {
+          const message = reminderDue
+            ? (ready ? 'Your move is still waiting. Choose Submit move to send it.' : 'Your move is not submitted. Complete verification, then choose Submit move.')
+            : (ready ? 'Move selected. Choose Submit move to confirm it.' : 'Move selected. Complete verification, then choose Submit move.');
+          showMoveGuide(`${moveKey}:${reminderDue ? 'reminder' : phase}`, message);
+        } else if (!reviewing && selectedSquare && !submitting && !gameOverState.over && !selectionIsStale && !connectionFailed) {
+          showMoveGuide(`piece:${selectedSquare}`, 'Choose a highlighted destination for this piece.');
+        } else {
+          showMoveGuide('', '');
+          dismissedGuideKey = '';
+        }
+      }
+
       function syncSubmissionControls() {
         syncVerificationWidget();
         let reason;
@@ -706,6 +793,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         btnCancel.hidden = !(pendingMove || selectedSquare) || Boolean(submissions.pending);
         btnCancel.disabled = submitting;
         boardEl.setAttribute('aria-busy', String(submitting || refreshingState));
+        syncMoveGuidance(ready);
       }
 
       function cancelSelectedMove() {
@@ -1076,13 +1164,15 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function onSquareClick(opaqueSquareId) {
+        if (historyState && !isHistoryLiveView() && !submitting) {
+          reviewGuideRequested = true;
+          dismissedGuideKey = '';
+          syncMoveGuidance(false);
+          return;
+        }
         if (submissions.pending || submitting || refreshingState || stateUnavailable || connectionFailed || promotionPending || gameOverState.over) return;
         if (!state) return;
         if (selectionIsStale || queuedServerState) { syncSubmissionControls(); return; }
-        if (historyState && !isHistoryLiveView()) {
-          setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
-          return;
-        }
 
         if (pendingMove && !selectedSquare) {
           clearSelection({ restore: true });
@@ -1212,7 +1302,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         liveGameId.textContent = currentState.id == null ? '' : `#${currentState.id}`;
         const status = currentState.status || 'Unknown';
         const visitorTurn = currentState.turn_color === currentState.visitor_color;
-        liveGameStatus.textContent = status === 'active' ? (visitorTurn ? 'Your turn' : 'Host to move') : 'Game over';
+        liveGameStatus.textContent = status === 'active' ? (visitorTurn ? 'Visitor Turn' : 'Host to move') : 'Game over';
+        liveGameStatus.classList.toggle('visitor-turn', status === 'active' && visitorTurn);
         liveLastMove.textContent = currentState.last_move_san || '—';
         // SQLite timestamps are UTC; use an unambiguous machine-readable value.
         const iso = normalizeTimestamp(currentState.updated_at);
@@ -1235,7 +1326,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           const lastRaw = (scoreData && typeof scoreData.last_result === 'string') ? scoreData.last_result : '';
           if (lastRaw) {
             const friendly = friendlyMap[lastRaw] || lastRaw;
-            scoreLastResult.textContent = `Last result: ${friendly}`;
+            scoreLastResult.textContent = `Previous game: ${friendly}`;
             scoreLastResult.classList.add('show');
           } else {
             scoreLastResult.textContent = '';
