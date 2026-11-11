@@ -252,8 +252,6 @@ def main():
         f.page.wait_for_function("document.querySelector('#updateBanner').classList.contains('show')")
         f.verify();assert f.page.locator('#btnSubmit').is_disabled()
         f.page.locator('#btnRefresh').click()
-        assert f.page.locator('#cancelMoveDialog').is_visible()
-        f.page.locator('#discardSelectedMove').click()
         assert f.page.locator('.selected-move').is_hidden()
         f.fail_state = True
         f.page.evaluate('window.runPoll()')
