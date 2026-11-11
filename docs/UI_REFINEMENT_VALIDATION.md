@@ -82,3 +82,15 @@ Without an axe bundle, the quality suite explicitly skips axe scans while runnin
 - [ ] Verify ownership, all promotions, canonical FEN/PGN exports, Live return, successor orientation, and unknown-outcome retries against real isolated endpoints.
 
 No production deployment or commit was made during validation.
+
+## Simplification follow-up — November 11, 2026
+
+- Removed the Details button, panel, persisted disclosure state, and Advanced/Notation hidden labels. Opening and full-move number are directly visible; FEN/PGN has its own compact toggle and Import PGN link.
+- Ownership appears once in the subhead. Live status and latest move remain in the game summary; review-specific facts appear only while reviewing history. The extra Live chip is hidden in live mode.
+- Normal instructions use one feedback line. Transient loading, errors, and confirmations replace it; errors are announced assertively through that same feedback area. The duplicate error panel was removed.
+- Visible keyboard help was removed; the board retains an assistive description, keyboard navigation, and focus handling. Cancel shares the selected-move row and is hidden before selection.
+- The live server returned `Cache-Control: max-age=2592000` for CSS and its current stylesheet matched the repository. This supports the stale-browser-style diagnosis from the screenshots. The public stylesheet URL now includes its content hash, so CSS changes request a new URL without requiring a hard refresh.
+- Fixed narrow-screen FEN/PGN overflow after removing the old panel wrapper.
+- Re-ran interaction checks at 320/390/768/1280px for both sides, all 77 rule/annotation tests, and all 32 axe state/viewport scans: no automatic violations. Composited text-contrast review remains incomplete.
+- Shared-style and standalone review checks passed. After 20 polls, 288 live elements, 621 renderer DOM nodes, and 270 listeners remained stable after garbage collection. These are fixture diagnostics with the same limitations described above.
+- PHP business logic, APIs, and submission transport remain unchanged. The stylesheet hash expression is the only added PHP code; PHP lint/integration and real-device/staging checks remain outstanding.

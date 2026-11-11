@@ -97,7 +97,7 @@ def main():
                                 if actor=='visitor':page.evaluate("window.onTurnstileSuccess('synthetic-again')")
                                 page.locator('#btnSubmit').click()
                                 if actor=='host':page.wait_for_url('**/index.php')
-                                else:page.wait_for_function("document.querySelector('#statusMsg').textContent.includes('Waiting on host move')")
+                                else:page.wait_for_function("document.querySelector('#liveGameStatus').textContent==='Host to move'")
                             assert fixture.execute('SELECT revision FROM games')[0]['revision']==1, 'duplicate or missing move'
                             assert len(fixture.execute('SELECT * FROM move_receipts'))==1, 'receipt not unique'
                             assert len(fixture.mailbox())==int(actor=='visitor'), 'duplicate/missing email'

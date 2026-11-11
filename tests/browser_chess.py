@@ -89,7 +89,7 @@ def main():
                                 if actor == 'host': page.locator('#btnNextGame').wait_for(state='visible')
                                 else: page.wait_for_function("document.querySelector('#gameOverBanner').classList.contains('show')")
                             elif actor == 'host': page.wait_for_url('**/index.php')
-                            else: page.wait_for_function("document.querySelector('#statusMsg').textContent.includes('Waiting on host move')")
+                            else: page.wait_for_function("document.querySelector('#liveGameStatus').textContent==='Host to move'")
                             game = fixture.execute('SELECT pgn,last_move_san,revision FROM games')[0]
                             expected = 'Qh4#' if scenario == 'checkmate' else 'a8=R+' if scenario == 'promotion' else 'e4'
                             assert game['last_move_san'] == expected and game['revision'] == 1

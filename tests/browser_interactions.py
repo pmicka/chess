@@ -146,6 +146,11 @@ def main():
                 source, target = ('e2', 'e4') if color == 'white' else ('e7', 'e5')
                 assert page.locator('#btnSubmit').is_disabled()
                 assert page.locator('#btnCancel').is_hidden()
+                assert page.locator('#detailsToggle, #hudDetailsPanel, .board-help, #notationStatus').count() == 0
+                assert page.locator('#historyStatus').is_hidden()
+                assert page.locator('.status-stack').is_hidden()
+                assert page.locator('#submissionHelp').is_visible()
+                assert page.locator('#boardHelp').evaluate('(e)=>getComputedStyle(e).clipPath') == 'inset(50%)'
                 assert page.locator('.turnstile-wrap').is_hidden()
                 assert page.evaluate('window.renderCount||0') == 0
                 assert page.locator('#board .sq[tabindex="0"]').count() == 1
@@ -163,7 +168,8 @@ def main():
                 with page.expect_response(lambda r: r.url.endswith('/api/state.php')):
                     page.evaluate('window.runPoll()')
                 page.evaluate('()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
-                wait_text(page, '#statusMsg', 'Move preview')
+                assert page.locator('#statusMsg').inner_text() == ''
+                assert page.locator('#submissionHelp').is_visible()
                 assert f.square(target).locator('img').count() == 1, 'poll erased preview'
                 assert f.square(source).locator('img').count() == 0
                 f.verify()
@@ -193,7 +199,6 @@ def main():
                 assert page.locator('#btnSubmit').is_disabled()
                 f.verify()
                 assert page.locator('#btnSubmit').is_disabled(), 'verification unlocked history'
-                page.locator('#detailsToggle').click()
                 page.locator('#toggleNotation').click()
                 assert page.locator('#toggleNotation').get_attribute('aria-expanded') == 'true'
                 assert 'Live-game FEN' in page.locator('#notationMount').inner_text()
@@ -213,6 +218,9 @@ def main():
             f.outcome = outcome
             f.select();f.verify();f.page.locator('#btnSubmit').click()
             wait_text(f.page, '#statusMsg', 'unconfirmed' if outcome != 'reject' else 'CAPTCHA verification failed')
+            assert f.page.locator('#submissionHelp').is_hidden()
+            assert f.page.locator('.status-line').get_attribute('aria-live') == 'assertive'
+            assert f.page.locator('#errorBox').count() == 0
             if outcome != 'reject':
                 assert f.page.locator('#btnCancel').is_hidden()
                 assert f.page.locator('#btnSubmit').is_enabled()
@@ -268,7 +276,8 @@ def main():
         with f.page.expect_response(lambda r: r.url.endswith('/api/state.php')):
             f.page.evaluate('window.runPoll()')
         f.page.evaluate('()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))')
-        wait_text(f.page, '#statusMsg', 'Move preview')
+        assert f.page.locator('#statusMsg').inner_text() == ''
+        assert f.page.locator('.selected-move').is_visible()
         assert f.page.locator('#gameOverBanner').is_hidden()
         assert f.page.locator('#btnSubmit').is_enabled()
         f.close();print('PASS mating preview remains unsubmitted across polling')

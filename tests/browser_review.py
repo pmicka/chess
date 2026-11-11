@@ -85,9 +85,9 @@ def main():
                             page.wait_for_function("document.body.dataset.gameId === '1' && typeof window.phase0Poll === 'function'")
                             wait_history(page, 'Live')
                             assert page.locator('#liveGameId').inner_text() == '#1'
-                            assert page.locator('#liveHostColor').inner_text() == host.title()
-                            assert page.locator('#liveWorldColor').inner_text() == color.title()
-                            assert page.locator('#liveGameStatus').inner_text() == f"{'World' if color == 'white' else 'Host'} to move · White"
+                            assert page.locator('#hostColorLabel').inner_text() == host
+                            assert page.locator('#visitorColorLabel').inner_text() == color
+                            assert page.locator('#liveGameStatus').inner_text() == ('Your turn' if color == 'white' else 'Host to move')
                             assert page.locator('#liveLastMove').inner_text() == 'a6'
                             assert page.locator('#liveUpdatedAt').get_attribute('datetime') == '2026-11-01T12:34:56Z'
                             assert '2:34 AM' in page.locator('#liveUpdatedAt').inner_text()
@@ -95,7 +95,7 @@ def main():
                             assert [page.locator(selector).inner_text() for selector in ('#scoreHostValue', '#scoreWorldValue', '#scoreDrawValue')] == ['3', '2', '1']
                             for selector in ('.live-game-card', '.live-game-facts', '.score-grid'):
                                 assert page.locator(selector).evaluate('(el) => el.scrollWidth <= el.clientWidth')
-                            assert page.locator('.live-game-card').evaluate('(el) => el.getBoundingClientRect().top >= document.querySelector("#board").getBoundingClientRect().bottom')
+                            assert page.locator('.live-game-card').evaluate('(el) => el.getBoundingClientRect().top >= document.querySelector("#btnSubmit").getBoundingClientRect().bottom')
                             ids = page.locator('#board .sq').evaluate_all('(els) => els.map(el => el.dataset.squareId)')
                             page.locator('#btnFlip').click()
                             assert page.locator('#btnFlip').get_attribute('aria-pressed') == 'true'
@@ -199,7 +199,7 @@ def main():
                             page.evaluate('window.phase0Poll()')
                             page.wait_for_function("document.querySelector('#updateBanner').classList.contains('show')")
                             assert page.locator('#liveLastMove').inner_text() == 'Ba4'
-                            assert page.locator('#liveGameStatus').inner_text() == f"{'World' if color == 'black' else 'Host'} to move · Black"
+                            assert page.locator('#liveGameStatus').inner_text() == ('Your turn' if color == 'black' else 'Host to move')
                             assert page.locator('#liveUpdatedAt').get_attribute('datetime') == '2026-11-07T12:00:00Z'
                             assert page.locator('#snapshotLastMove').inner_text() == 'Bb5'
                             wait_history(page, 'Reviewing ply 5 of 6')
@@ -247,7 +247,7 @@ def main():
                             assert page.locator('#btnFlip').get_attribute('aria-pressed') == 'false'
                             assert page.locator('#visitorColorLabel').inner_text() == host
                             assert page.locator('#liveGameId').inner_text() == '#2'
-                            assert page.locator('#liveWorldColor').inner_text() == host.title()
+                            assert page.locator('#visitorColorLabel').inner_text() == host
                             assert page.locator('#liveLastMove').inner_text() == '—'
                             assert square(page, 'e1', host).locator('img').get_attribute('src').endswith('wK.svg')
                             assert fixture.snapshot() == successor
