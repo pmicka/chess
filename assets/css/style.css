@@ -2399,3 +2399,10 @@ textarea {
 .public-game .move-guide #statusMsg { color: inherit; font-weight: 400; }
 
 .public-game .move-guide[data-tone="neutral"] { border-color: var(--border-strong); background: #161c24; color: var(--text-secondary); }
+
+/* Quiet, concise player ownership metadata beneath the title. */
+.public-game .subhead { color: var(--text-muted); font-weight: 400; letter-spacing: normal; gap: 8px 20px; }
+.public-game .subhead > span { gap: 4px; }
+.public-game .subhead > span + span::before { content: none; }
+.public-game .subhead b { font: inherit; color: var(--text-secondary); }
+.public-game .subhead .about-link { font-size: 14px; font-weight: 400; letter-spacing: normal; }
