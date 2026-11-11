@@ -25,7 +25,7 @@ def main():
             assert page.locator('#moveGuide').evaluate('(e)=>getComputedStyle(e,"::before").content') == 'none'
             f.square('e4').click()
             assert page.locator('#statusMsg').inner_text() == ''
-            assert 'Complete verification'  in page.locator('#submissionHelp').inner_text()
+            assert 'Checking security' in page.locator('#submissionHelp').inner_text()
             assert page.locator('#btnSubmit').is_disabled()
             assert page.locator('#btnSubmit').get_attribute('data-phase') == 'verification'
             page.clock.run_for(29999)
@@ -44,6 +44,9 @@ def main():
             assert not f.posts
             f.select()
             f.verify()
+            assert page.locator('#submissionHelp').inner_text() == 'Move ready—not submitted. Choose Submit move.'
+            assert page.locator('#turnstileWidget').bounding_box()['height'] == 0
+            assert not f.posts
             page.locator('#btnSubmit').click()
             page.wait_for_function("document.querySelector('#liveGameStatus').textContent.includes('Host')")
             page.clock.run_for(31000)

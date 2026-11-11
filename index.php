@@ -660,6 +660,7 @@ if (!empty($preloadedGame['visitor_color'])) {
             sitekey: turnstileWidget.dataset.sitekey,
             size: 'flexible',
             theme: 'dark',
+            appearance: 'interaction-only',
             callback: window.onTurnstileSuccess,
             'expired-callback': window.onTurnstileExpired,
             'error-callback': window.onTurnstileError,
@@ -714,8 +715,8 @@ if (!empty($preloadedGame['visitor_color'])) {
           showMoveGuide('You’re reviewing an earlier position. Choose Live to return to the game before moving.');
         } else if (eligible) {
           const message = !turnstileToken && verificationMessage ? verificationMessage : reminderDue
-            ? (ready ? 'Your move is still waiting. Choose Submit move to send it.' : 'Your move is not submitted. Complete verification, then choose Submit move.')
-            : (ready ? 'Move selected. Choose Submit move to confirm it.' : 'Move selected. Complete verification, then choose Submit move.');
+            ? (ready ? 'Your move is still waiting. Choose Submit move to send it.' : 'Your move is not submitted. Complete any security check that appears.')
+            : (ready ? 'Move ready—not submitted. Choose Submit move.' : 'Checking security… Your move is not submitted.');
           showMoveGuide(message);
         } else if (!reviewing && selectedSquare && !submitting && !gameOverState.over && !selectionIsStale && !connectionFailed && !refreshingState && !submissions.pending && !stateUnavailable && !queuedServerState) {
           showMoveGuide('Choose a highlighted destination for this piece.');
@@ -745,10 +746,10 @@ if (!empty($preloadedGame['visitor_color'])) {
         } else if (gameOverState.over || state.status !== 'active') reason = '';
         else if (!isVisitorsTurn()) reason = 'Moves happen asynchronously. The board refreshes automatically.';
         else if (!pendingMove) reason = selectedSquare ? 'Choose a highlighted destination.' : 'Choose a piece, then a destination.';
-        else if (!turnstileToken) reason = verificationMessage || 'Complete the CAPTCHA to submit this move.';
+        else if (!turnstileToken) reason = verificationMessage || 'Checking security… Your move is not submitted.';
         else {
           ready = true;
-          reason = 'Verified. Submit move to confirm your selection.';
+          reason = 'Move ready—not submitted. Choose Submit move.';
         }
         btnSubmit.disabled = !ready;
         const submitLabel = submitting ? 'Submitting…' : submissions.pending ? 'Retry same move' : 'Submit move';

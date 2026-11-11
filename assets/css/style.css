@@ -1835,7 +1835,7 @@ textarea {
 }
 
 .public-game .turnstile-wrap {
-  min-height: 65px;
+  min-height: 0;
 }
 
 .public-game .connection-notice {

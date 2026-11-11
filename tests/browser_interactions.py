@@ -69,6 +69,8 @@ class Fixture:
                   render:(el,options)=>{window.verificationOptions=options;
                     window.renderCount=(window.renderCount||0)+1;
                     el.innerHTML='<div style="width:300px;height:65px">CAPTCHA fixture</div>';
+                    el.firstElementChild.hidden=options.appearance==='interaction-only';
+                    window.showVerificationChallenge=()=>{el.firstElementChild.hidden=false;};
                     return 'fixture-widget';},
                   reset:(id)=>{if(id!=='fixture-widget')throw Error('Wrong widget ID');},
                   remove:(id)=>{if(id!=='fixture-widget')throw Error('Wrong widget ID');
@@ -124,7 +126,7 @@ class Fixture:
         self.square(target).click()
 
     def verify(self):
-        self.page.evaluate("window.onTurnstileSuccess('fixture-token')")
+        self.page.evaluate("const fixture=document.querySelector('#turnstileWidget').firstElementChild;if(fixture)fixture.hidden=true;window.onTurnstileSuccess('fixture-token')")
 
     def close(self):
         assert not self.errors, self.errors
@@ -164,6 +166,9 @@ def main():
                 assert f.square(target).evaluate('(e)=>e===document.activeElement'), 'rerender lost focus'
                 assert page.locator('#btnSubmit').is_disabled(), 'missing CAPTCHA enabled submit'
                 assert page.locator('.selected-move').is_visible()
+                assert page.evaluate('window.verificationOptions.appearance') == 'interaction-only'
+                assert page.locator('#turnstileWidget').bounding_box()['height'] == 0
+                page.evaluate('window.showVerificationChallenge()')
                 assert page.locator('.turnstile-wrap').is_visible()
                 assert page.evaluate('window.renderCount') == 1
                 with page.expect_response(lambda r: r.url.endswith('/api/state.php')):
