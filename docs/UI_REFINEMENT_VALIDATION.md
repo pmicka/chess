@@ -101,3 +101,11 @@ No production deployment or commit was made during validation.
 - Legal destination hints include en passant and clear when a selection changes or is cancelled. Captures retain their accessible description and use the common destination-dot styling. The additional class and accessible capture description are presentation only; legal moves and submission behavior are unchanged.
 - Kept the distinct two-tone keyboard-focus indicator. Contrast checks now test destination dots with their alpha composited against both square colors; they do not claim the translucent fills satisfy a 3:1 boundary contrast threshold. Composited visual review remains part of the manual checklist.
 - Interaction checks, capture/en-passant checks, all 32 axe state/viewport scans, shared-style/review checks, and bounded polling checks passed. No automatic accessibility violations; manual contrast, real-device, and PHP/staging limitations remain as above.
+
+## Compact reference controls — November 11, 2026
+
+- Matched the notebook viewer's 40px desktop and 44px narrow-screen history controls, compact text/padding, icon-only Flip button, and exact red/green sliding toggle. Source measurements and provenance are in [DESIGN.md](DESIGN.md). Other public action buttons now use compact intrinsic widths.
+- The toggle opens the existing live FEN/PGN panel immediately below the history controls. Its pressed/expanded state and keyboard operation stay synchronized; viewing history still blocks move submission.
+- Copied the original 226,352-byte SVG artwork unchanged. This adds a static asset, with no new runtime library.
+- Focused control checks passed at 320/390/768/1280px. Interaction checks and all 32 axe state/viewport scans passed, along with shared-style, standalone review, landscape, reduced-motion, and bounded-polling checks. The target-size check now uses the 24px WCAG AA minimum; the reference's 40px desktop controls supersede the earlier blanket 44px expectation.
+- Visually reviewed isolated mobile screenshots with the toggle off and on. PHP/staging, real CAPTCHA, physical-device, and manual contrast checks remain outstanding. Server logic and submission transport are unchanged.

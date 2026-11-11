@@ -1734,7 +1734,11 @@ textarea {
 }
 
 .public-game button {
-  min-height: 44px;
+  width: auto;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  min-height: 40px;
 }
 
 .public-game ~ .back-to-top {
@@ -1801,7 +1805,7 @@ textarea {
 .public-game #btnCancel {
   align-self: flex-start;
   width: auto;
-  min-height: 44px;
+  min-height: 40px;
 }
 
 .public-game .move-preview-row {
@@ -1914,14 +1918,17 @@ textarea {
 }
 
 .public-game .primary-buttons {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
   gap: 8px;
 }
 
 .public-game .primary-buttons button {
+  flex: 0 0 auto;
   min-width: 0;
-  min-height: 44px;
+  min-height: 40px;
 }
 
 .public-game #btnRefresh,
@@ -1936,30 +1943,173 @@ textarea {
 }
 
 .public-game .history-controls {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
+  width: 100%;
+  --pgn-control-border: var(--border-strong);
+  --pgn-toggle-on: var(--success);
+  --pgn-toggle-off: var(--error);
+  --pgn-control-height: 40px;
+  --pgn-toggle-width: 68px;
+  --pgn-toggle-padding: 2px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-12);
+  flex-wrap: nowrap;
+}
+
+.public-game .history-controls .pgn-annot-toggle {
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .public-game .history-buttons {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  display: flex;
+  gap: var(--space-12);
+  flex-wrap: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.public-game .control-square-button {
+  padding: 0;
+  width: var(--pgn-control-height);
+  min-width: var(--pgn-control-height);
+  min-height: var(--pgn-control-height);
+  height: var(--pgn-control-height);
+  max-height: var(--pgn-control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-tight);
+  color: var(--text-primary);
+}
+
+.public-game .control-square-button .pgn-icon {
+  width: 55%;
+  height: 55%;
+  display: block;
+}
+
+.public-game .pgn-flip-button .pgn-icon {
+  /* Explicit sizing avoids mobile font-size inheritance shrinking the SVG. */
+  width: calc(var(--pgn-control-height) * 0.55);
+  height: calc(var(--pgn-control-height) * 0.55);
 }
 
 .public-game .history-buttons button {
+  height: var(--pgn-control-height);
+  min-height: var(--pgn-control-height);
+  max-height: var(--pgn-control-height);
+  flex: 0 1 auto;
   min-width: 0;
-  min-height: 44px;
-  padding: 8px 4px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1;
+}
+
+.public-game .pgn-annot-toggle {
+  position: relative;
+  padding: 0;
+  min-width: var(--pgn-toggle-width);
+  min-height: var(--pgn-control-height);
+  border-radius: 999px;
+  border: 1px solid var(--pgn-control-border);
+  background: var(--pgn-toggle-off);
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.public-game .pgn-annot-toggle:hover,
+.public-game .pgn-annot-toggle:active {
+  background: var(--pgn-toggle-off);
+}
+
+.public-game .pgn-annot-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(125, 211, 255, 0.45);
+}
+
+.public-game .pgn-annot-toggle__knob {
+  position: absolute;
+  left: .5px;
+  width: calc(var(--pgn-control-height) - (var(--pgn-toggle-padding) * 2));
+  height: calc(var(--pgn-control-height) - (var(--pgn-toggle-padding) * 2));
+  border-radius: 50%;
+  background: #0f141d;
+  border: 1px solid var(--pgn-control-border);
+  padding: 2px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: left 180ms ease;
+}
+
+.public-game .pgn-annot-toggle__disc {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #202631;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.public-game .pgn-annot-toggle__icon {
+  width: 70%;
+  height: 70%;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  border-radius: 0;
+}
+
+.public-game .pgn-annot-toggle[aria-pressed="true"] {
+  background: var(--pgn-toggle-on);
+  border-color: var(--pgn-control-border);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.public-game .pgn-annot-toggle[aria-pressed="true"]:hover,
+.public-game .pgn-annot-toggle[aria-pressed="true"]:active {
+  background: var(--pgn-toggle-on);
+}
+
+.public-game .pgn-annot-toggle[aria-pressed="true"] .pgn-annot-toggle__knob {
+  left: calc(var(--pgn-toggle-width) - var(--pgn-toggle-padding) - (var(--pgn-control-height) - (var(--pgn-toggle-padding) * 2)));
 }
 
 .public-game #btnFlip {
-  width: auto;
+  width: var(--pgn-control-height);
+  min-width: 0;
+  min-height: var(--pgn-control-height);
+  flex-shrink: 1;
+}
+
+.public-game .history-buttons button:not(.control-square-button) {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+
+.public-game .pgn-annot-toggle {
+  font-size: 14px;
+  line-height: normal;
+}
+
+.public-game .board-stack > .notation-mount {
+  min-width: 0;
+  margin: 0;
 }
 
 .public-game .history-chip {
   justify-self: end;
+  align-self: flex-start;
   min-width: 0;
 }
 
@@ -2080,6 +2230,64 @@ textarea {
     align-items: start;
     padding: 20px;
     gap: 24px;
+  }
+}
+
+@media (max-width: 520px) {
+  .public-game .history-controls {
+    --pgn-control-height: 44px;
+    --pgn-toggle-width: 60px;
+    gap: 4px;
+    flex-wrap: nowrap;
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+  }
+
+  .public-game .history-buttons {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 3px;
+    flex-wrap: nowrap;
+    justify-content: space-between;
+  }
+
+  .public-game .history-buttons button:not(.pgn-annot-toggle) {
+    height: var(--pgn-control-height);
+    min-height: var(--pgn-control-height);
+    max-height: var(--pgn-control-height);
+    padding: 0 3px;
+    font-size: 11px;
+    line-height: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .public-game .history-buttons .control-square-button {
+    padding: 0;
+    width: var(--pgn-control-height);
+    min-width: var(--pgn-control-height);
+    flex: 0 0 var(--pgn-control-height);
+  }
+
+  .public-game .history-controls .pgn-annot-toggle {
+    margin-left: 0;
+    flex: 0 0 auto;
+    min-width: var(--pgn-toggle-width);
+  }
+
+  .public-game .history-controls .pgn-annot-toggle {
+    margin-left: 6px;
+  }
+
+}
+
+@media (max-width: 360px) {
+  .public-game .history-buttons button:not(.pgn-annot-toggle) {
+    /* Let the longest label keep its width on very narrow screens. */
+    flex-basis: auto;
   }
 }
 

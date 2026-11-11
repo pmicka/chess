@@ -43,7 +43,7 @@ def geometry(page):
         const r=e.getBoundingClientRect();return r.width>0&&(r.left<0||r.right>innerWidth+1);
       }).map(e=>e.id||e.className),
       smallButtons:[...document.querySelectorAll('.public-game button')].filter(e=>{
-        const r=e.getBoundingClientRect();return r.width>0&&(r.width<44||r.height<44);
+        const r=e.getBoundingClientRect();return r.width>0&&(r.width<24||r.height<24);
       }).map(e=>({id:e.id,w:e.getBoundingClientRect().width,h:e.getBoundingClientRect().height}))})''')
     assert not result['overflow'], result
     assert not result['smallButtons'], result
@@ -106,7 +106,7 @@ def quality(browser, width, axe_path):
     assert page.locator('#board .sq[tabindex="0"]').evaluate('(e)=>e===document.activeElement')
     tree = accessibility_tree(page)
     assert sum(role == 'button' and bool(re.match(r'^[a-h][1-8], ', name)) for role, name in tree) == 64
-    assert ('button', 'Show FEN / PGN') in tree
+    assert ('button', 'Toggle live-game notation') in tree
     assert page.locator('#detailsToggle, #hudDetailsPanel, .board-help, #notationStatus').count() == 0
     assert page.locator('#historyStatus').is_hidden()
     assert page.locator('.status-stack').is_hidden()
@@ -133,7 +133,7 @@ def quality(browser, width, axe_path):
     page.locator('#btnCancel').click()
     page.locator('#btnBack').click()
     results.append(audit(page, 'history', axe_path))
-    assert ('button', 'Show FEN / PGN') in accessibility_tree(page)
+    assert ('button', 'Toggle live-game notation') in accessibility_tree(page)
     page.locator('#toggleNotation').click()
     geometry(page)
     results.append(audit(page, 'history with live notation', axe_path))

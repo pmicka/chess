@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Reference sizing and copied notation-toggle contract. No outside requests.
+
+Dimensions come from pmicka/notebook 7b92d91's PGN viewer. The live app keeps
+its Live action and maps the reference toggle to canonical live-game notation.
+"""
+import hashlib
+import sys
+sys.dont_write_bytecode = True
+from browser_interactions import Fixture, ROOT, sync_playwright
+
+
+def main():
+    assert hashlib.sha256((ROOT / 'assets/icons/annot-pill.svg').read_bytes()).hexdigest() == '2ea3284d0d4e5b71da1ae297be2b8e60d7cff2c724d8d28c90851d8e6a8ed85b'
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
+        for width in (320, 390, 768, 1280):
+            f = Fixture(browser, width, pgn='1. e4 e5 2. Nf3 Nc6')
+            page = f.page
+            page.emulate_media(reduced_motion='no-preference')
+            page.locator('.pgn-annot-toggle__icon').evaluate('(e)=>e.decode()')
+            controls = page.locator('.history-controls button').evaluate_all('''els=>els.map(e=>{
+              let r=e.getBoundingClientRect(),s=getComputedStyle(e);return {id:e.id,y:r.y,h:r.height,w:r.width,
+                font:s.fontSize,padding:s.padding,lineHeight:s.lineHeight,radius:s.borderRadius}})''')
+            mobile = width <= 520
+            height = 44 if mobile else 40
+            pill_width = 60 if mobile else 68
+            assert len(controls) == 6
+            assert max(e['y'] for e in controls) - min(e['y'] for e in controls) < 1
+            assert all(e['h'] == height for e in controls)
+            for e in controls[:4]:
+                assert e['font'] == ('11px' if mobile else '13px')
+                assert e['padding'] == ('0px 3px' if mobile else '0px 12px')
+                assert e['radius'] == '8px'
+            assert controls[-1]['w'] == pill_width and controls[-1]['radius'] == '999px'
+            assert page.locator('#btnSubmit').bounding_box()['height'] == 40
+            assert page.locator('#btnSubmit').bounding_box()['width'] < 150
+            assert page.locator('.history-controls').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
+            assert page.locator('.history-buttons button').evaluate_all('(els)=>els.every(e=>e.scrollWidth<=e.clientWidth)')
+            toggle = page.locator('#toggleNotation')
+            knob = page.locator('.pgn-annot-toggle__knob')
+            assert toggle.get_attribute('aria-pressed') == 'false'
+            assert knob.bounding_box()['width'] == height - 4
+            assert knob.evaluate('(e)=>getComputedStyle(e).left') == '0.5px'
+            assert toggle.evaluate('(e)=>getComputedStyle(e).backgroundColor') == 'rgb(255, 107, 107)'
+            toggle.focus();page.keyboard.press('Space')
+            page.wait_for_function('(left)=>Math.abs(parseFloat(getComputedStyle(document.querySelector(".pgn-annot-toggle__knob")).left)-left)<.01', arg=pill_width - 2 - (height - 4))
+            assert toggle.get_attribute('aria-pressed') == toggle.get_attribute('aria-expanded') == 'true'
+            assert toggle.evaluate('(e)=>getComputedStyle(e).backgroundColor') == 'rgb(108, 214, 155)'
+            assert page.locator('#notationMount').is_visible()
+            assert page.locator('.notation-readout--fen').inner_text() == f.state['fen']
+            assert page.locator('.pgn-annot-toggle__icon').count() == 1
+            page.keyboard.press('Space')
+            assert toggle.get_attribute('aria-pressed') == toggle.get_attribute('aria-expanded') == 'false'
+            assert page.locator('#notationMount').is_hidden()
+            page.locator('#btnBack').click()
+            toggle.click()
+            assert page.locator('#btnSubmit').is_disabled()
+            assert page.locator('.notation-readout--fen').inner_text() == f.state['fen']
+            assert not f.posts
+            f.close()
+            print(f'PASS {width}px: reference sizing, exact icon, toggle endpoints/colors, keyboard, live FEN/history lock', flush=True)
+        browser.close()
+
+
+if __name__ == '__main__':
+    main()
