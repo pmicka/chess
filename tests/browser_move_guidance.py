@@ -13,6 +13,8 @@ def main():
             page = f.page
             page.clock.install()
             assert page.locator('#liveGameStatus').inner_text() == 'Visitor Turn'
+            assert page.locator('#moveGuide').get_attribute('data-tone') == 'neutral'
+            assert page.locator('#submissionHelp').inner_text() == 'Choose a piece, then a destination.'
             assert page.locator('.game-watermark #liveGameId').inner_text() == '#1'
             assert page.locator('#liveGameTitle').count() == 0
             f.square('e2').click()
@@ -55,6 +57,8 @@ def main():
             page.clock.run_for(31000)
             assert 'still waiting' not in page.locator('#submissionHelp').inner_text()
             assert len(f.posts) == 1
+            assert page.locator('#moveGuide').get_attribute('data-tone') == 'neutral'
+            assert 'Waiting for the host to move' in page.locator('#submissionHelp').inner_text()
             f.close()
 
             f = Fixture(browser, width, pgn='1. e4 e5')
@@ -70,6 +74,15 @@ def main():
             assert 'still waiting' not in page.locator('#submissionHelp').inner_text()
             assert not f.posts
             f.close()
+            for visitor_color, host_position in [('white', '1. e4'), ('black', '')]:
+                f = Fixture(browser, width, color=visitor_color, pgn=host_position)
+                assert f.page.locator('#liveGameStatus').inner_text() == 'Host to move'
+                assert f.page.locator('#moveGuide').get_attribute('data-tone') == 'neutral'
+                assert 'Waiting for the host to move' in f.page.locator('#submissionHelp').inner_text()
+                assert 'updates automatically' in f.page.locator('#submissionHelp').inner_text()
+                assert f.page.locator('#btnSubmit').is_disabled()
+                assert not f.posts
+                f.close()
             print(f'PASS {width}px: coaching, 30s reminder, CAPTCHA gating, unified feedback/cancel, reduced motion, review lock', flush=True)
         browser.close()
 
