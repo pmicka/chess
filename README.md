@@ -107,3 +107,5 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 - Updated browser submissions use idempotent receipts to recover lost responses. Visitor session storage holds only public move fields and an identifier; host credentials are never stored there. Valid host-link loading, legal server validation, and the existing authorization boundaries remain.
 - Run `PHP_BIN=php python3 tests/notification_recovery.py` for all Phase 1–4 integration checks, plus `tests/browser_recovery.py` for optional isolated browser recovery checks. No real emails or production services are used by these tests.
 - Use feature branches and pull requests as usual; there is no enforced branching convention in-repo.
+
+- Move-guidance checks: `python3 tests/browser_move_guidance.py` exercises isolated reminder timing, CAPTCHA gating, cancellation/submission cleanup, review guidance, and reduced motion.
