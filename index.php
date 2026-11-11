@@ -169,19 +169,6 @@ if (!empty($preloadedGame['visitor_color'])) {
             </button>
           </div>
         </div>
-        <section id="notationMount" class="notation-mount game-details" aria-label="Displayed position details" hidden>
-          <dl id="gameSnapshot" class="game-meta">
-            <div><dt>Opening</dt><dd id="snapshotOpening">Unknown</dd></div>
-            <div><dt>Ply</dt><dd id="snapshotPly">0 ply · move 1</dd></div>
-            <div><dt>Last move</dt><dd id="snapshotLastMove">—</dd></div>
-            <div><dt>Status</dt><dd id="snapshotStatus">—</dd></div>
-          </dl>
-          <div class="notation-actions">
-            <button id="copyFen" type="button" class="secondary ghost-button button-compact">Copy FEN</button>
-            <button id="copyPgn" type="button" class="secondary ghost-button button-compact">Copy PGN</button>
-            <span id="copyStatus" class="copy-note" role="status" aria-live="polite"></span>
-          </div>
-        </section>
       </div>
       <div class="control-bay">
         <section class="live-game-summary" aria-labelledby="liveGameTitle">
@@ -235,6 +222,19 @@ if (!empty($preloadedGame['visitor_color'])) {
           <span>New server state available. Refresh to sync.</span>
           <button id="btnBannerRefresh">Refresh</button>
         </div>
+        <section id="notationMount" class="notation-mount game-details" aria-label="Displayed position details" hidden>
+          <dl id="gameSnapshot" class="game-meta">
+            <div><dt>Opening</dt><dd id="snapshotOpening">Unknown</dd></div>
+            <div><dt>Ply</dt><dd id="snapshotPly">0 ply · move 1</dd></div>
+            <div><dt>Last move</dt><dd id="snapshotLastMove">—</dd></div>
+            <div><dt>Status</dt><dd id="snapshotStatus">—</dd></div>
+          </dl>
+          <div class="notation-actions">
+            <button id="copyFen" type="button" class="secondary ghost-button button-compact">Copy FEN</button>
+            <button id="copyPgn" type="button" class="secondary ghost-button button-compact">Copy PGN</button>
+            <span id="copyStatus" class="copy-note" role="status" aria-live="polite"></span>
+          </div>
+        </section>
         <section class="scoreboard live-game-card" id="scoreboard" aria-labelledby="allTimeTitle">
           <h2 class="live-score-heading muted" id="allTimeTitle">All-time score</h2>
           <div class="score-grid" role="group" aria-label="All-time score">
@@ -1680,7 +1680,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         const lastMoveSan = lastMove
           ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
           : '';
-        const lastMoveLine = isLiveMode() ? buildLastMoveText(state, lastMoveSan) : lastMoveSan;
+        const lastMoveLine = lastMoveSan;
         const plyCount = context.plyCount;
         const fullmove = Math.max(1, Math.ceil(plyCount / 2));
         const plyText = isLiveMode()

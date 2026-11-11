@@ -123,3 +123,10 @@ No production deployment or commit was made during validation.
 - Removed the history info pill and earlier-position banner. Selected/total ply and move number now share the details panel's Ply row, hidden with the slider closed. Move numbering follows the reference viewer's completed/selected move convention (`ceil(ply / 2)`, minimum 1). The disabled submission hint is shortened to “Return to Live to play.”
 - History failures use the existing accessible error feedback; history submission locking, navigation, and copy exports are retained.
 - Focused controls/exports, full interaction checks, all 32 axe scans, shared styles, reduced motion, forced colors, reflow, landscape, and bounded polling passed. A targeted check confirmed both live and reviewed ply text and closed-panel visibility after the numbering adjustment. Mobile screenshot visually reviewed. Physical-device/PHP/staging/manual checks remain outstanding. Not merged or deployed.
+
+## Typography and information order — November 11, 2026
+
+- Unified game labels (12px regular sentence case), values/feedback (14px regular), section headings (15px semibold), and score totals (22px semibold). Reference button sizing and board coordinates remain unchanged.
+- Moved expandable details below live status/actions and above all-time score, preserving this order in the desktop rail and mobile document flow. Removed the duplicate timestamp from details.
+- Focused tests verify document order, computed type styles, disclosure, history/preview exports, clipboard failures, and submission locking at 320/390/768/1280px. All passed. All 32 axe scans, shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling passed. Mobile and desktop screenshots visually reviewed; JavaScript syntax and diff checks passed. No backend or submission behavior changed.
+- Physical-device, real CAPTCHA, manual contrast, and PHP/staging checks remain outstanding. Not merged or deployed.

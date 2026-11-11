@@ -49,6 +49,12 @@ def main():
             assert toggle.get_attribute('aria-pressed') == toggle.get_attribute('aria-expanded') == 'true'
             assert toggle.evaluate('(e)=>getComputedStyle(e).backgroundColor') == 'rgb(108, 214, 155)'
             assert page.locator('#notationMount').is_visible()
+            assert page.evaluate("""() => {
+              const before=(a,b)=>!!(document.querySelector(a).compareDocumentPosition(document.querySelector(b))&Node.DOCUMENT_POSITION_FOLLOWING);
+              return before('.history-controls','.live-game-summary') && before('.live-game-summary','.action-row') && before('.action-row','#notationMount') && before('#notationMount','#scoreboard');
+            }""")
+            assert page.locator('.live-game-facts dd, .game-meta dd, .submission-help, .score-last').evaluate_all("els=>els.every(e=>getComputedStyle(e).fontSize==='14px'&&getComputedStyle(e).fontWeight==='400')")
+            assert page.locator('.live-game-facts dt, .game-meta dt, .score-label').evaluate_all("els=>els.every(e=>getComputedStyle(e).fontSize==='12px'&&getComputedStyle(e).textTransform==='none')")
             assert page.locator('.notation-readout').count() == 0
             page.locator('#copyFen').click()
             assert page.evaluate('window.copied.at(-1)') == f.state['fen']
