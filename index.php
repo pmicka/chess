@@ -682,10 +682,16 @@ if (!empty($preloadedGame['visitor_color'])) {
       let reviewGuideRequested = false;
       let submitPhase = '';
       const moveGuide = document.getElementById('moveGuide');
+      function updateFeedbackTone() {
+        moveGuide.dataset.tone = statusMsg.textContent
+          ? (statusMsg.classList.contains('error') ? 'error' : statusMsg.classList.contains('ok') ? 'success' : 'warning')
+          : (submitPhase === 'ready' ? 'success' : 'warning');
+      }
       function showMoveGuide(message) {
         if (submissionHelp.textContent !== message) submissionHelp.textContent = message;
         submissionHelp.hidden = Boolean(statusMsg.textContent) || !message;
         moveGuide.hidden = !statusMsg.textContent && !message;
+        updateFeedbackTone();
       }
 
       function syncMoveGuidance(ready, reason = submissionHelp.textContent) {
@@ -1261,7 +1267,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         statusMsg.closest('.status-stack').hidden = !message;
         submissionHelp.hidden = Boolean(message) || !submissionHelp.textContent;
         moveGuide.hidden = !message && !submissionHelp.textContent;
-        moveGuide.dataset.tone = message ? tone : 'muted';
+        updateFeedbackTone();
       }
 
       function renderLiveMetadata(currentState) {

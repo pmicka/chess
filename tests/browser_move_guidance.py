@@ -20,12 +20,14 @@ def main():
             f.square('e5').click()
             assert page.locator('#moveGuide #statusMsg').is_visible()
             assert 'not legal' in page.locator('#statusMsg').inner_text()
+            assert page.locator('#moveGuide').get_attribute('data-tone') == 'error'
             assert page.locator('#submissionHelp').is_hidden()
             assert page.locator('#moveGuide').evaluate('(e)=>e.closest(".control-bay")!==null')
             assert page.locator('#moveGuide').evaluate('(e)=>getComputedStyle(e,"::before").content') == 'none'
             f.square('e4').click()
             assert page.locator('#statusMsg').inner_text() == ''
             assert 'Checking security' in page.locator('#submissionHelp').inner_text()
+            assert page.locator('#moveGuide').get_attribute('data-tone') == 'warning'
             assert page.locator('#btnSubmit').is_disabled()
             assert page.locator('#btnSubmit').get_attribute('data-phase') == 'verification'
             page.clock.run_for(29999)
@@ -35,6 +37,7 @@ def main():
             f.verify()
             assert 'still waiting' in page.locator('#submissionHelp').inner_text()
             assert page.locator('#btnSubmit').get_attribute('data-phase') == 'ready'
+            assert page.locator('#moveGuide').get_attribute('data-tone') == 'success'
             page.emulate_media(reduced_motion='reduce')
             assert page.locator('#btnSubmit').evaluate('(e)=>getComputedStyle(e).animationName') == 'none'
             assert page.locator('#dismissMoveGuide').count() == 0

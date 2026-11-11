@@ -176,3 +176,9 @@ No production deployment or commit was made during validation.
 - Shortened Submit move to Submit across the button and public helper/error/reminder wording. Increased action-row type from 13px to 14px. Ready Submit now uses a muted blue surface with pale text and the site's blue accent border/pulse; inactive states use the secondary dark surface. Reduced-motion behavior is retained.
 - Focused controls/export checks passed at 320/390/768/1280px; guidance/reminder, verification gating, and explicit submission checks passed at 390/1280px. All 32 axe scans, shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling passed. Settled computed colors and type verified at 320/390/1280px; mobile/desktop action rows visually reviewed. JavaScript syntax and diff checks passed.
 - No server or submission behavior changes. Real-device, real Turnstile, manual accessibility, and PHP/staging checks remain separate. Not merged or deployed.
+
+## Traffic-light feedback — November 11, 2026
+
+- Added semantic red/amber/green feedback treatment. Errors use slightly muted orange-red, pending/action-required states use amber, and ready/accepted states use green. Existing text and assertive error announcements remain; ready messages still explicitly state that submission has not happened.
+- Coaching tests passed at 390/1280px with assertions for error, pending-verification, and ready tones. All 32 axe scans, shared styles, reflow/text stress, reduced motion, forced colors, landscape, and bounded polling passed. Static text/surface contrast ratios are 9.03:1, 9.54:1, and 9.80:1 respectively. All three message panels visually reviewed; JavaScript syntax and diff checks passed.
+- No backend/submission behavior changes. Real-device, real Turnstile, manual screen-reader, and PHP/staging checks remain separate. Not merged or deployed.
