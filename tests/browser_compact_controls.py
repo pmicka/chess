@@ -2,7 +2,7 @@
 """Reference sizing and copied notation-toggle contract. No outside requests.
 
 Dimensions come from pmicka/notebook 7b92d91's PGN viewer. The live app keeps
-its Live action and maps the reference toggle to canonical live-game notation.
+its Live action and maps the reference toggle to displayed position details.
 """
 import hashlib
 import sys
@@ -17,6 +17,7 @@ def main():
         for width in (320, 390, 768, 1280):
             f = Fixture(browser, width, pgn='1. e4 e5 2. Nf3 Nc6')
             page = f.page
+            page.evaluate("""() => {window.copied=[];Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async text=>window.copied.push(text)}})}""")
             page.emulate_media(reduced_motion='no-preference')
             page.locator('.pgn-annot-toggle__icon').evaluate('(e)=>e.decode()')
             controls = page.locator('.history-controls button').evaluate_all('''els=>els.map(e=>{
@@ -48,18 +49,46 @@ def main():
             assert toggle.get_attribute('aria-pressed') == toggle.get_attribute('aria-expanded') == 'true'
             assert toggle.evaluate('(e)=>getComputedStyle(e).backgroundColor') == 'rgb(108, 214, 155)'
             assert page.locator('#notationMount').is_visible()
-            assert page.locator('.notation-readout--fen').inner_text() == f.state['fen']
+            assert page.locator('.notation-readout').count() == 0
+            page.locator('#copyFen').click()
+            assert page.evaluate('window.copied.at(-1)') == f.state['fen']
+            page.locator('#copyPgn').click()
+            assert page.evaluate('window.copied.at(-1)') == '1. e4 e5 2. Nf3 Nc6'
             assert page.locator('.pgn-annot-toggle__icon').count() == 1
+            toggle.focus()
             page.keyboard.press('Space')
             assert toggle.get_attribute('aria-pressed') == toggle.get_attribute('aria-expanded') == 'false'
             assert page.locator('#notationMount').is_hidden()
             page.locator('#btnBack').click()
             toggle.click()
             assert page.locator('#btnSubmit').is_disabled()
-            assert page.locator('.notation-readout--fen').inner_text() == f.state['fen']
+            page.locator('#copyPgn').click()
+            assert page.evaluate('window.copied.at(-1)') == '1. e4 e5 2. Nf3'
+            page.locator('#copyFen').click()
+            review_fen = page.evaluate('window.copied.at(-1)')
+            assert review_fen != f.state['fen']
+            page.locator('#btnStart').click()
+            page.locator('#copyPgn').click()
+            assert page.evaluate('window.copied.at(-1)') == ''
+            page.locator('#btnLive').click()
+            page.locator('#copyFen').click()
+            assert page.evaluate('window.copied.at(-1)') == f.state['fen']
+            f.select('d2', 'd4')
+            page.locator('#copyPgn').click()
+            assert page.evaluate('window.copied.at(-1)') == '1. e4 e5 2. Nf3 Nc6 3. d4'
+            page.locator('#copyFen').click()
+            assert page.evaluate('window.copied.at(-1)') != f.state['fen']
+            page.locator('#btnCancel').click()
+            page.locator('#copyFen').click()
+            assert page.evaluate('window.copied.at(-1)') == f.state['fen']
+            page.evaluate("Object.defineProperty(navigator,'clipboard',{value:{writeText:async()=>{throw Error('denied')}}})")
+            page.locator('#copyFen').click()
+            assert 'Copy failed' in page.locator('#copyStatus').inner_text()
+            assert page.locator('a[href="review.php"]').count() == 0
+            assert not (ROOT / 'review.php').exists()
             assert not f.posts
             f.close()
-            print(f'PASS {width}px: reference sizing, exact icon, toggle endpoints/colors, keyboard, live FEN/history lock', flush=True)
+            print(f'PASS {width}px: reference sizing, exact icon, toggle endpoints/colors, keyboard, displayed FEN/PGN, clipboard failure, history lock', flush=True)
         browser.close()
 
 

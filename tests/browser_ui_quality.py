@@ -106,7 +106,7 @@ def quality(browser, width, axe_path):
     assert page.locator('#board .sq[tabindex="0"]').evaluate('(e)=>e===document.activeElement')
     tree = accessibility_tree(page)
     assert sum(role == 'button' and bool(re.match(r'^[a-h][1-8], ', name)) for role, name in tree) == 64
-    assert ('button', 'Toggle live-game notation') in tree
+    assert ('button', 'Toggle game details') in tree
     assert page.locator('#detailsToggle, #hudDetailsPanel, .board-help, #notationStatus').count() == 0
     assert page.locator('#historyStatus').is_hidden()
     assert page.locator('.status-stack').is_hidden()
@@ -133,14 +133,14 @@ def quality(browser, width, axe_path):
     page.locator('#btnCancel').click()
     page.locator('#btnBack').click()
     results.append(audit(page, 'history', axe_path))
-    assert ('button', 'Toggle live-game notation') in accessibility_tree(page)
+    assert ('button', 'Toggle game details') in accessibility_tree(page)
     page.locator('#toggleNotation').click()
     geometry(page)
     results.append(audit(page, 'history with live notation', axe_path))
-    assert page.locator('.notation-readout').count() == 2
-    assert ('region', 'Canonical live-game FEN') in accessibility_tree(page)
+    assert page.locator('.notation-readout').count() == 0
+    assert ('button', 'Copy FEN') in accessibility_tree(page)
     page.locator('#toggleNotation').click()
-    assert ('region', 'Canonical live-game FEN') not in accessibility_tree(page)
+    assert ('button', 'Copy FEN') not in accessibility_tree(page)
 
     page.emulate_media(reduced_motion='reduce')
     page.evaluate('scrollTo(0,500)')
@@ -205,46 +205,6 @@ def shared_css(browser):
     print('PASS shared host/review class geometry and styling unchanged at 320/390/1280px', flush=True)
 
 
-def review_smoke(browser):
-    source = re.sub(r'<\?[\s\S]*?\?>', '', (ROOT / 'review.php').read_text())
-    from browser_annotations import SAMPLE
-    for width in (320, 390, 1280):
-        context = browser.new_context(viewport={'width': width, 'height': 900})
-        forbidden, errors = [], []
-        def route(r):
-            u = urlparse(r.request.url)
-            if u.hostname != 'review.test' or '/api/' in u.path or r.request.method != 'GET':
-                forbidden.append(r.request.url)
-                return r.abort()
-            path = u.path.lstrip('/')
-            if path == 'review.php':
-                return r.fulfill(body=source, content_type='text/html')
-            file = ROOT / path
-            if file.is_file():
-                import mimetypes
-                return r.fulfill(body=file.read_bytes(), content_type=mimetypes.guess_type(str(file))[0] or 'application/octet-stream')
-            return r.abort()
-        context.route('**/*', route)
-        page = context.new_page()
-        page.on('pageerror', lambda e: errors.append(str(e)))
-        page.goto('https://review.test/review.php')
-        page.locator('#pgnInput').fill(SAMPLE)
-        page.get_by_role('button', name='Review PGN', exact=True).click()
-        page.locator('#importedReview').wait_for(state='visible')
-        page.locator('#reviewNext').click()
-        assert 'Supplied classification: Inaccuracy' in page.locator('#annotationSummary').inner_text()
-        assert page.locator('#suggestionArrow line').count() == 1
-        assert page.locator('#importedPlayers img, #annotationComment script').count() == 0
-        page.locator('#reviewFlip').click()
-        page.locator('#reviewFinal').click()
-        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
-        page.locator('#clearReview').click()
-        assert page.locator('#importedReview').is_hidden()
-        assert not forbidden and not errors, (forbidden, errors)
-        context.close()
-    print('PASS actual standalone review import/annotations/flip/clear at 320/390/1280px (PHP header stripped)', flush=True)
-
-
 def performance(browser):
     f = Fixture(browser, 390)
     page = f.page
@@ -299,7 +259,6 @@ def main():
         for width in (320, 390, 768, 1280):
             report['viewports'].append(quality(browser, width, args.axe_path))
         shared_css(browser)
-        review_smoke(browser)
         report['performance'] = performance(browser)
         f = Fixture(browser, 844)
         f.page.set_viewport_size({'width': 844, 'height': 390})

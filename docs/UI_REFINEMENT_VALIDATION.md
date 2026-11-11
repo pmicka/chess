@@ -109,3 +109,11 @@ No production deployment or commit was made during validation.
 - Copied the original 226,352-byte SVG artwork unchanged. This adds a static asset, with no new runtime library.
 - Focused control checks passed at 320/390/768/1280px. Interaction checks and all 32 axe state/viewport scans passed, along with shared-style, standalone review, landscape, reduced-motion, and bounded-polling checks. The target-size check now uses the 24px WCAG AA minimum; the reference's 40px desktop controls supersede the earlier blanket 44px expectation.
 - Visually reviewed isolated mobile screenshots with the toggle off and on. PHP/staging, real CAPTCHA, physical-device, and manual contrast checks remain outstanding. Server logic and submission transport are unchanged.
+
+## Position details and copy-only exports — November 11, 2026
+
+- The slider now expands displayed-position metadata with Copy FEN and Copy PGN below it. Raw notation readouts and the Import PGN link are removed. Deleted the standalone import endpoint, its frontend/CSS, and its retired browser tests; shared chess/review libraries remain.
+- Copy reads the board at click time. PGN is replayed through the selected ply and includes a legal unsubmitted preview; returning to Live restores current exports. PGN copying fails with accessible feedback if replay cannot match the displayed FEN, rather than exporting a different position. Clipboard fallback restores focus and removes its temporary textarea.
+- Focused checks passed at 320/390/768/1280px for sizing, keyboard disclosure, live/history/start/preview exports, Live return, cancellation, clipboard failure, and history submission locking. Full interaction checks passed for both sides, promotion, stale/invalid state, submission concurrency, verification gating, and game-over messaging.
+- All 32 axe state/viewport scans passed without automatic violations. Shared-style, reduced-motion, forced-color, text-stress, landscape, and bounded-polling checks passed. Visually reviewed the expanded mobile panel. JavaScript syntax and diff checks passed; existing PHP blocks are unchanged.
+- Physical-device, real CAPTCHA, manual contrast, and PHP/staging checks remain outstanding. No merge or production deployment performed.

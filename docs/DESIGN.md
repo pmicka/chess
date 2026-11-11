@@ -26,12 +26,12 @@ The toggle uses `#ff6b6b` off and `#6cd69b` on, a `#0f141d` knob, `#202631` inne
 
 ## Integration
 
-The reference CSS and markup are scoped to `.public-game`; existing host and separate-review styles remain independent. Controls share one row: Start, Back, Forward, Live, Flip, and the copied notation toggle. `Live` retains the asynchronous game's existing meaning rather than becoming the reference's `Final` action.
+The reference CSS and markup are scoped to `.public-game`; existing host styles remain independent. Controls share one row: Start, Back, Forward, Live, Flip, and the copied notation toggle. `Live` retains the asynchronous game's existing meaning rather than becoming the reference's `Final` action.
 
-The toggle opens the existing canonical live-game FEN/PGN view directly below the history controls. Its pressed/expanded state stays synchronized and its icon remains mounted. Opening and move-number information stay visible in the compact summary; the removed Details wrapper is not restored.
+The toggle opens displayed-position metadata directly below the history controls: opening, move number, last move, and status. Copy FEN and Copy PGN sit below those facts; no raw notation is rendered. Exports follow the selected history ply, Live, or a legal unsubmitted preview. The standalone PGN import service has been removed. Pressed/expanded state stays synchronized and the icon remains mounted.
 
 Button widths respond to the available board width. At widths up to 360px, content-based flex sizing prevents the Forward label from overflowing; toggle dimensions and styling remain unchanged. Keyboard labels, focus handling, and the wider board are preserved.
 
-Reference screenshots were inspected at 390/1280px. `tests/browser_compact_controls.py` verifies extracted dimensions, the exact icon, on/off geometry and colors, keyboard operation, canonical FEN export during history review, and submission locking at 320/390/768/1280px. Native-device and real Turnstile/PHP integration checks remain separate.
+Reference screenshots were inspected at 390/1280px. `tests/browser_compact_controls.py` verifies extracted dimensions, the exact icon, on/off geometry and colors, keyboard operation, displayed FEN/PGN export during history review, Live return, unsubmitted previews, clipboard errors, and submission locking at 320/390/768/1280px. Native-device and real Turnstile/PHP integration checks remain separate.
 
 The copied SVG is 226,352 bytes uncompressed; its embedded artwork is preserved for the requested visual match. It is a static local asset, not a new runtime library.

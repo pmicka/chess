@@ -201,11 +201,11 @@ def main():
                 assert page.locator('#btnSubmit').is_disabled(), 'verification unlocked history'
                 page.locator('#toggleNotation').click()
                 assert page.locator('#toggleNotation').get_attribute('aria-expanded') == 'true'
-                assert 'Live-game FEN' in page.locator('#notationMount').inner_text()
-                assert f.state['fen'] == page.locator('.notation-readout--fen').inner_text()
+                assert 'Copy FEN' in page.locator('#notationMount').inner_text()
+                assert page.locator('.notation-readout').count() == 0
                 page.evaluate("Object.defineProperty(navigator,'clipboard',{value:undefined,configurable:true}); document.execCommand=()=>false")
                 page.get_by_role('button', name='Copy FEN', exact=True).click()
-                assert page.locator('#notationMount .copy-note').first.inner_text() == 'Copy failed'
+                assert page.locator('#notationMount .copy-note').first.inner_text() == 'Copy failed. Please try again.'
                 assert page.locator('textarea').count() == 0, 'clipboard fallback leaked a focus target'
                 assert page.get_by_role('button', name='Copy FEN', exact=True).evaluate('(e)=>e===document.activeElement')
                 page.locator('#btnLive').click()
