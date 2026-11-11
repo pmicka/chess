@@ -206,7 +206,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           </aside>
           <div class="action-stack">
             <div class="primary-buttons">
-              <button id="btnSubmit" aria-describedby="submissionHelp" disabled>Submit move</button>
+              <button id="btnSubmit" aria-describedby="submissionHelp" disabled>Submit</button>
               <button id="btnRefresh">Refresh</button>
               <button id="btnCancel" class="secondary button-compact" type="button" aria-label="Cancel selection" disabled>Cancel</button>
             </div>
@@ -715,8 +715,8 @@ if (!empty($preloadedGame['visitor_color'])) {
           showMoveGuide('You’re reviewing an earlier position. Choose Live to return to the game before moving.');
         } else if (eligible) {
           const message = !turnstileToken && verificationMessage ? verificationMessage : reminderDue
-            ? (ready ? 'Your move is still waiting. Choose Submit move to send it.' : 'Your move is not submitted. Complete any security check that appears.')
-            : (ready ? 'Move ready—not submitted. Choose Submit move.' : 'Checking security… Your move is not submitted.');
+            ? (ready ? 'Your move is still waiting. Choose Submit to send it.' : 'Your move is not submitted. Complete any security check that appears.')
+            : (ready ? 'Move ready—not submitted. Choose Submit.' : 'Checking security… Your move is not submitted.');
           showMoveGuide(message);
         } else if (!reviewing && selectedSquare && !submitting && !gameOverState.over && !selectionIsStale && !connectionFailed && !refreshingState && !submissions.pending && !stateUnavailable && !queuedServerState) {
           showMoveGuide('Choose a highlighted destination for this piece.');
@@ -749,10 +749,10 @@ if (!empty($preloadedGame['visitor_color'])) {
         else if (!turnstileToken) reason = verificationMessage || 'Checking security… Your move is not submitted.';
         else {
           ready = true;
-          reason = 'Move ready—not submitted. Choose Submit move.';
+          reason = 'Move ready—not submitted. Choose Submit.';
         }
         btnSubmit.disabled = !ready;
-        const submitLabel = submitting ? 'Submitting…' : submissions.pending ? 'Retry same move' : 'Submit move';
+        const submitLabel = submitting ? 'Submitting…' : submissions.pending ? 'Retry same move' : 'Submit';
         if (btnSubmit.textContent !== submitLabel) btnSubmit.textContent = submitLabel;
         movePreviewRow.hidden = !pendingMove || Boolean(submissions.pending);
         btnCancel.disabled = !(pendingMove || selectedSquare) || submitting || Boolean(submissions.pending);
@@ -2205,7 +2205,7 @@ if (!empty($preloadedGame['visitor_color'])) {
             : { resetSelection, allowQueue });
           startPolling();
           if (submissions.pending && !submitting) {
-            setStatus('Previous move outcome unconfirmed. Submit move to retry safely.', 'error');
+            setStatus('Previous move outcome unconfirmed. Submit to retry safely.', 'error');
             syncSubmissionControls();
           } else if (recovered) {
             setStatus('Move accepted. Current board refreshed.', 'ok');
@@ -2389,7 +2389,7 @@ if (!empty($preloadedGame['visitor_color'])) {
             await submissions.send(payload, {turnstile_token:turnstileToken});
           }
         } catch (err) {
-          setStatus(err.message || 'Outcome unconfirmed. Retry Submit move to check.', 'error');
+          setStatus(err.message || 'Outcome unconfirmed. Retry Submit to check.', 'error');
           resetTurnstile();
           setSubmittingState(false);
           return;

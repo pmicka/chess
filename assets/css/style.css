@@ -2367,9 +2367,9 @@ textarea {
   color: var(--text-primary); font-size: 14px; line-height: 1.5;
 }
 .public-game #btnSubmit { transition: background-color .2s, color .2s, border-color .2s, box-shadow .2s; }
-.public-game #btnSubmit[data-phase="ready"] { animation: submit-ready 1s ease-out 2; border-color: var(--success); }
+.public-game #btnSubmit[data-phase="ready"] { animation: submit-ready 1s ease-out 2; background: #203748; color: #d8f1ff; border-color: var(--accent); }
 .public-game #btnSubmit[data-phase="verification"] { animation: submit-awaiting .6s ease-out 1; }
-@keyframes submit-ready { 0%,100% { box-shadow: 0 0 0 0 transparent; } 45% { box-shadow: 0 0 0 5px rgba(108,214,155,.32); } }
+@keyframes submit-ready { 0%,100% { box-shadow: 0 0 0 0 transparent; } 45% { box-shadow: 0 0 0 5px rgba(125,211,255,.25); } }
 @keyframes submit-awaiting { 50% { box-shadow: 0 0 0 3px rgba(125,211,255,.22); } }
 @media (prefers-reduced-motion: reduce) { .public-game #btnSubmit { animation: none; transition: none; } }
 /* Review clicks explain the lock; the controller still forbids selection. */
@@ -2384,3 +2384,8 @@ textarea {
 .public-game .move-guide[data-tone="error"] { border-color: var(--error); }
 
 .public-game .primary-buttons #btnSubmit { flex-shrink: 1; }
+
+/* Match the site accent while keeping the action row compact. */
+.public-game .primary-buttons button { font-size: 14px; }
+.public-game #btnSubmit:not([data-phase="ready"]) { background: var(--button-surface); color: var(--text-secondary); border-color: var(--border-strong); }
+.public-game #btnSubmit[data-phase="ready"]:hover:not(:disabled) { background: #29485e; color: #d8f1ff; }

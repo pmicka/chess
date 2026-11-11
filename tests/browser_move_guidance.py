@@ -44,7 +44,7 @@ def main():
             assert not f.posts
             f.select()
             f.verify()
-            assert page.locator('#submissionHelp').inner_text() == 'Move ready—not submitted. Choose Submit move.'
+            assert page.locator('#submissionHelp').inner_text() == 'Move ready—not submitted. Choose Submit.'
             assert page.locator('#turnstileWidget').bounding_box()['height'] == 0
             assert not f.posts
             page.locator('#btnSubmit').click()
