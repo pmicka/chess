@@ -919,6 +919,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         squares.forEach(el => {
           el.classList.remove('pick');
           el.classList.remove('hint');
+          el.classList.remove('hint-capture');
           el.classList.remove('last');
           el.classList.remove('review-check');
         });
@@ -930,7 +931,10 @@ if (!empty($preloadedGame['visitor_color'])) {
           const moves = game.moves({ square: selectedSquare, verbose: true });
           moves.forEach(m => {
             const hint = findSquareEl(m.to);
-            if (hint) hint.classList.add('hint');
+            if (hint) {
+              hint.classList.add('hint');
+              if (m.flags.includes('c') || m.flags.includes('e')) hint.classList.add('hint-capture');
+            }
           });
         }
 
@@ -962,6 +966,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           const description = piece ? `${piece.color === 'w' ? 'White' : 'Black'} ${names[piece.type]}` : 'empty';
           const flags = [el.classList.contains('pick') ? 'selected' : '',
             el.classList.contains('hint') ? 'legal destination' : '',
+            el.classList.contains('hint-capture') ? 'capture' : '',
             el.classList.contains('last') ? 'last move' : ''].filter(Boolean);
           el.setAttribute('aria-label', [sq, description, ...flags].join(', '));
           el.setAttribute('aria-pressed', String(el.classList.contains('pick')));
