@@ -104,7 +104,7 @@ if (!empty($preloadedGame['visitor_color'])) {
     ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . "\n" ?>
   </script>
   <script type="application/json" id="appConfig"><?= json_encode($chessAppConfig, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?></script>
-  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="stylesheet" href="assets/css/style.css?v=<?= substr(hash_file('sha256', __DIR__ . '/assets/css/style.css'), 0, 12) ?>">
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16x16.png">
@@ -145,10 +145,7 @@ if (!empty($preloadedGame['visitor_color'])) {
             </div>
           </div>
         </div>
-        <details class="board-help">
-          <summary>Keyboard controls</summary>
-          <p id="boardHelp">Tab to the board, use arrow keys to explore, Enter or Space to select, and Escape to cancel. Home and End move to the edges of the current row.</p>
-        </details>
+        <p id="boardHelp" class="visually-hidden">Use arrow keys to explore the board, Enter or Space to select, and Escape to cancel. Home and End move to the edges of the current row.</p>
         <div class="control-row review-row">
           <div class="history-controls">
             <div class="history-buttons">
@@ -162,18 +159,15 @@ if (!empty($preloadedGame['visitor_color'])) {
           </div>
         </div>
         <div id="historyNotice" class="banner" role="status" aria-live="polite">
-          <span>Reviewing history — click Live to return before submitting a move.</span>
+          <span id="snapshotStatus">Review position</span>
+          <span class="review-last-move">Last move: <span id="snapshotLastMove">—</span></span>
         </div>
       </div>
       <div class="control-bay">
         <section class="live-game-summary" aria-labelledby="liveGameTitle">
           <div class="live-game-heading">
-            <h2 id="liveGameTitle">Current game <span id="liveGameId"></span></h2>
+            <h2 id="liveGameTitle">Game <span id="liveGameId"></span></h2>
             <span id="liveGameStatus" class="muted">Loading…</span>
-          </div>
-          <div class="live-game-players" role="group" aria-label="Current game sides">
-            <span>Host · <strong id="liveHostColor">—</strong></span>
-            <span>World · <strong id="liveWorldColor">—</strong></span>
           </div>
           <dl class="live-game-facts">
             <div><dt>Latest move</dt><dd id="liveLastMove">—</dd></div>
@@ -190,16 +184,18 @@ if (!empty($preloadedGame['visitor_color'])) {
           </div>
         </div>
         <div class="control-row action-row">
-          <div class="status-stack">
+          <div class="status-stack" hidden>
             <div class="status-line" aria-live="polite">
               <span id="statusSpinner" class="spinner" aria-hidden="true"></span>
               <span id="statusMsg" class="muted"></span>
             </div>
           </div>
-          <p class="muted selected-move" hidden>
-            Not submitted: <code id="movePreview">none</code>
-          </p>
-          <button id="btnCancel" class="secondary button-compact" type="button" hidden>Cancel selection</button>
+          <div class="move-preview-row" hidden>
+            <p class="muted selected-move" hidden>
+              Not submitted: <code id="movePreview">none</code>
+            </p>
+            <button id="btnCancel" class="secondary button-compact" type="button" aria-label="Cancel selection" hidden>Cancel</button>
+          </div>
           <p id="submissionHelp" class="submission-help" role="status" aria-live="polite"></p>
           <div class="action-stack">
             <div class="primary-buttons">
@@ -219,7 +215,6 @@ if (!empty($preloadedGame['visitor_color'])) {
           <span>New server state available. Refresh to sync.</span>
           <button id="btnBannerRefresh">Refresh</button>
         </div>
-        <div id="errorBox" class="error-block" role="alert" aria-live="polite"></div>
         <section class="scoreboard live-game-card" id="scoreboard" aria-labelledby="allTimeTitle">
           <h2 class="live-score-heading muted" id="allTimeTitle">All-time score</h2>
           <div class="score-grid" role="group" aria-label="All-time score">
@@ -238,41 +233,17 @@ if (!empty($preloadedGame['visitor_color'])) {
           </div>
           <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
         </section>
-        <div class="hud-details">
-          <button id="detailsToggle" class="details-toggle" type="button" aria-expanded="false" aria-controls="hudDetailsPanel">Details</button>
-          <div id="hudDetailsPanel" class="hud-details-panel" hidden>
-            <div id="gameSnapshot" class="game-snapshot" aria-live="polite">
-              <div class="snapshot-row">
-                <span class="snapshot-label muted">Opening</span>
-                <span class="snapshot-value" id="snapshotOpening">Unknown</span>
-              </div>
-              <div class="snapshot-row">
-                <span class="snapshot-label muted">Ply count</span>
-                <span class="snapshot-value" id="snapshotPly">0 ply · move 0</span>
-              </div>
-              <div class="snapshot-row">
-                <span class="snapshot-label muted">Last move</span>
-                <span class="snapshot-value" id="snapshotLastMove">—</span>
-              </div>
-              <div class="snapshot-row">
-                <span class="snapshot-label muted">Status</span>
-                <span class="snapshot-value" id="snapshotStatus">—</span>
-              </div>
-            </div>
-            <div class="details-divider" aria-hidden="true"></div>
-            <div class="details-advanced">
-              <div class="details-advanced-header">
-                <p class="muted details-advanced-title">Advanced</p>
-                <div class="notation-controls">
-                  <button id="toggleNotation" class="secondary ghost-button button-compact" type="button" aria-expanded="false" aria-controls="notationMount">Show live-game notation</button>
-                  <span id="notationStatus" class="muted" aria-live="polite"></span>
-                </div>
-              </div>
-              <div id="notationMount" class="notation-mount"></div>
-              <p><a href="review.php">Review a separate annotated PGN</a></p>
-            </div>
+        <section class="position-info" aria-label="Displayed position">
+          <div id="gameSnapshot" class="position-facts">
+            <span><span class="muted">Opening: </span><span id="snapshotOpening">Unknown</span></span>
+            <span id="snapshotPly" class="muted">Move 1</span>
           </div>
-        </div>
+          <div class="notation-controls">
+            <button id="toggleNotation" class="secondary ghost-button button-compact" type="button" aria-expanded="false" aria-controls="notationMount">Show FEN / PGN</button>
+            <a href="review.php">Import PGN</a>
+          </div>
+          <div id="notationMount" class="notation-mount"></div>
+        </section>
       </div>
     </div>
 
@@ -351,7 +322,7 @@ if (!empty($preloadedGame['visitor_color'])) {
       const connectionNotice = document.getElementById('connectionNotice');
       const movePreview = document.getElementById('movePreview');
       const selectedMoveRow = document.querySelector('.selected-move');
-      const errorBox = document.getElementById('errorBox');
+      const movePreviewRow = document.querySelector('.move-preview-row');
       const scoreboardEl = document.getElementById('scoreboard');
       const scoreHostValue = document.getElementById('scoreHostValue');
       const scoreWorldValue = document.getElementById('scoreWorldValue');
@@ -378,9 +349,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       const historyNotice = document.getElementById('historyNotice');
       const notationMount = document.getElementById('notationMount');
       const toggleNotationBtn = document.getElementById('toggleNotation');
-      const notationStatus = document.getElementById('notationStatus');
-      const detailsToggle = document.getElementById('detailsToggle');
-      const hudDetailsPanel = document.getElementById('hudDetailsPanel');
       const snapshotBlock = document.getElementById('gameSnapshot');
       const snapshotOpeningEl = document.getElementById('snapshotOpening');
       const snapshotPlyEl = document.getElementById('snapshotPly');
@@ -388,15 +356,12 @@ if (!empty($preloadedGame['visitor_color'])) {
       const snapshotStatusEl = document.getElementById('snapshotStatus');
       const liveGameId = document.getElementById('liveGameId');
       const liveGameStatus = document.getElementById('liveGameStatus');
-      const liveHostColor = document.getElementById('liveHostColor');
-      const liveWorldColor = document.getElementById('liveWorldColor');
       const liveLastMove = document.getElementById('liveLastMove');
       const liveUpdatedAt = document.getElementById('liveUpdatedAt');
       const backToTopBtn = document.getElementById('backToTopButton');
       const prefersReducedMotion = (typeof window !== 'undefined' && window.matchMedia)
         ? window.matchMedia('(prefers-reduced-motion: reduce)')
         : null;
-      const DETAILS_STATE_KEY = 'chess_details_open';
       const snapshotRenderCache = { opening: null, ply: null, lastMove: null, status: null };
 
       boardEl.classList.add('locked');
@@ -437,7 +402,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       let turnstileToken = null;
       let ecoLoadPrimed = false;
       let openingLookupToken = 0;
-      let detailsOpen = false;
       let focusedSquare = null;
       let verificationMessage = '';
       let refreshingState = false;
@@ -552,29 +516,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         }
       }
 
-      function persistDetailsState(open) {
-        if (typeof sessionStorage === 'undefined') return;
-        try {
-          sessionStorage.setItem(DETAILS_STATE_KEY, open ? '1' : '0');
-        } catch (err) {
-          // ignore storage failures
-        }
-      }
-
-      function restoreDetailsState() {
-        if (typeof sessionStorage === 'undefined') return;
-        try {
-          const raw = sessionStorage.getItem(DETAILS_STATE_KEY);
-          if (raw === '1') {
-            detailsOpen = true;
-          } else if (raw === '0') {
-            detailsOpen = false;
-          }
-        } catch (err) {
-          detailsOpen = false;
-        }
-      }
-
       function persistViewState() {
         if (typeof sessionStorage === 'undefined') return;
         try {
@@ -645,27 +586,30 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       restoreViewState();
-      restoreDetailsState();
       updateMovePreviewDisplay('');
 
       window.onTurnstileSuccess = (token) => {
         turnstileToken = token;
+        if (!submitting) setStatus('');
         verificationMessage = '';
         syncSubmissionControls();
       };
       window.onTurnstileExpired = () => {
         turnstileToken = null;
         verificationMessage = 'Verification expired. Complete the CAPTCHA again.';
+        if (!submitting) setStatus('');
         syncSubmissionControls();
       };
       window.onTurnstileError = () => {
         turnstileToken = null;
         verificationMessage = 'Verification failed. Retry the CAPTCHA; if it stays unavailable, reload the page.';
+        if (!submitting) setStatus('');
         syncSubmissionControls();
       };
       window.onTurnstileTimeout = () => {
         turnstileToken = null;
         verificationMessage = 'Verification timed out. Complete the CAPTCHA again.';
+        if (!submitting) setStatus('');
         syncSubmissionControls();
       };
 
@@ -739,9 +683,9 @@ if (!empty($preloadedGame['visitor_color'])) {
         else if (selectionIsStale || queuedServerState || (selectionStateFingerprint &&
                  selectionStateFingerprint !== latestFetchedStateFingerprint)) {
           reason = 'The live game changed. Refresh before selecting another move.';
-        } else if (gameOverState.over || state.status !== 'active') reason = 'Game over. Waiting for the host to start the next game.';
-        else if (!isVisitorsTurn()) reason = 'Waiting for the host. Moves happen asynchronously; this game refreshes automatically.';
-        else if (!pendingMove) reason = selectedSquare ? 'Select a highlighted destination, or press Escape to cancel.' : 'Select one of your pieces, then a legal destination.';
+        } else if (gameOverState.over || state.status !== 'active') reason = '';
+        else if (!isVisitorsTurn()) reason = 'Moves happen asynchronously. The board refreshes automatically.';
+        else if (!pendingMove) reason = selectedSquare ? 'Choose a highlighted destination.' : 'Choose a piece, then a destination.';
         else if (!turnstileToken) reason = verificationMessage || 'Complete the CAPTCHA to submit this move.';
         else {
           ready = true;
@@ -751,6 +695,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         const submitLabel = submitting ? 'Submitting…' : submissions.pending ? 'Retry same move' : 'Submit move';
         if (btnSubmit.textContent !== submitLabel) btnSubmit.textContent = submitLabel;
         if (submissionHelp.textContent !== reason) submissionHelp.textContent = reason;
+        submissionHelp.hidden = !reason || Boolean(statusMsg.textContent);
+        movePreviewRow.hidden = !(pendingMove || selectedSquare) || Boolean(submissions.pending);
         btnCancel.hidden = !(pendingMove || selectedSquare) || Boolean(submissions.pending);
         btnCancel.disabled = submitting;
         boardEl.setAttribute('aria-busy', String(submitting || refreshingState));
@@ -966,11 +912,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         } else {
           updateHighlights();
         }
-      }
-
-      function clearErrors() {
-        errorBox.textContent = '';
-        errorBox.classList.remove('show');
       }
 
       function updateHighlights() {
@@ -1247,21 +1188,20 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function setStatus(message, tone = 'muted', { showSpinner = false } = {}) {
+        statusMsg.parentElement.setAttribute('aria-live', tone === 'error' ? 'assertive' : 'polite');
         if (statusMsg.textContent !== message) statusMsg.textContent = message;
         statusMsg.className = tone;
         statusSpinner.classList.toggle('show', showSpinner);
+        statusMsg.closest('.status-stack').hidden = !message;
+        submissionHelp.hidden = Boolean(message) || !submissionHelp.textContent;
       }
 
       function renderLiveMetadata(currentState) {
         if (!currentState) return;
-        const colorLabel = (color) => color === 'white' ? 'White' : color === 'black' ? 'Black' : '—';
         liveGameId.textContent = currentState.id == null ? '' : `#${currentState.id}`;
-        liveHostColor.textContent = colorLabel(currentState.you_color);
-        liveWorldColor.textContent = colorLabel(currentState.visitor_color);
         const status = currentState.status || 'Unknown';
-        const turn = colorLabel(currentState.turn_color);
-        const actor = currentState.turn_color === currentState.visitor_color ? 'World' : 'Host';
-        liveGameStatus.textContent = status === 'active' ? `${actor} to move · ${turn}` : status;
+        const visitorTurn = currentState.turn_color === currentState.visitor_color;
+        liveGameStatus.textContent = status === 'active' ? (visitorTurn ? 'Your turn' : 'Host to move') : 'Game over';
         liveLastMove.textContent = currentState.last_move_san || '—';
         // SQLite timestamps are UTC; use an unambiguous machine-readable value.
         const iso = normalizeTimestamp(currentState.updated_at);
@@ -1304,7 +1244,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         resetPromotionChooser();
         updateMovePreviewDisplay('');
         boardEl.classList.add('locked');
-        showErrors([message]);
         try {
           game.clear();
         } catch (err) {
@@ -1425,41 +1364,12 @@ if (!empty($preloadedGame['visitor_color'])) {
       }
 
       function updateStatusMessage() {
+        // The game heading shows turn/status; submissionHelp shows the next step.
+        // statusMsg is reserved for transient loading, errors, and confirmations.
+        setStatus('');
+        boardEl.classList.toggle('locked', !state || !isHistoryLiveView() ||
+          gameOverState.over || !isVisitorsTurn());
         syncSubmissionControls();
-        if (!state) return;
-
-        if (historyState && !isHistoryLiveView()) {
-          setStatus('Reviewing history — click Live to return before submitting a move.', 'muted');
-          boardEl.classList.add('locked');
-          return;
-        }
-
-        if (gameOverState && gameOverState.over) {
-          setStatus('Game over. Waiting for next game.', 'muted');
-          boardEl.classList.add('locked');
-          return;
-        }
-
-        if (state.status !== 'active') {
-          setStatus(`Game is ${state.status || 'inactive'}.`, 'muted');
-          boardEl.classList.add('locked');
-          return;
-        }
-
-        const snapshotSans = getSnapshotSans();
-        const lastSan = snapshotSans.length ? snapshotSans[snapshotSans.length - 1] : '';
-        const lastMoveLine = buildLastMoveText(state, lastSan);
-
-        if (isVisitorsTurn()) {
-          setStatus(pendingMove ? 'Move preview — not submitted.' : selectedSquare ? 'Choose a legal destination.' : 'Your turn. Select a piece to begin.', 'muted');
-          boardEl.classList.remove('locked');
-        } else {
-          const waitingMsg = lastMoveLine && lastMoveLine !== '—'
-            ? `Waiting on host move. Last move: ${lastMoveLine}`
-            : 'Waiting on host move.';
-          setStatus(waitingMsg, 'muted');
-          boardEl.classList.add('locked');
-        }
       }
 
       function deriveLastMoveSquares(currentState) {
@@ -1751,12 +1661,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         return best ? { eco: best.eco, name: best.name, matchedPlies: best.movesLen } : null;
       }
 
-      function formatMoveCount(plies) {
-        const num = Number.isFinite(plies) ? Math.max(0, plies) : 0;
-        const moveNum = Math.max(0, Math.ceil(num / 2));
-        return `${num} ply · move ${moveNum}`;
-      }
-
       async function renderGameSnapshot() {
         if (!snapshotBlock) return;
         const lookupId = ++openingLookupToken;
@@ -1766,7 +1670,8 @@ if (!empty($preloadedGame['visitor_color'])) {
           ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
           : '';
         const lastMoveLine = isLiveMode() ? buildLastMoveText(state, lastMoveSan) : lastMoveSan;
-        const plyText = formatMoveCount(context.plyCount);
+        const fullmove = Number(context.chess.fen().split(/\s+/)[5]) || 1;
+        const plyText = `Move ${fullmove}`;
         if (snapshotPlyEl && snapshotRenderCache.ply !== plyText) {
           snapshotRenderCache.ply = plyText;
           snapshotPlyEl.textContent = plyText;
@@ -1931,6 +1836,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           boardEl.classList.remove('history-locked');
           if (historyStatus) {
             historyStatus.textContent = 'Live';
+            historyStatus.hidden = true;
             historyStatus.className = 'history-chip muted';
           }
           return;
@@ -1946,6 +1852,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           ? (isLive ? 'Live' : `Reviewing ply ${selectedIdx} of ${h.timeline.length - 1}`)
           : 'Live';
         historyStatus.textContent = statusText;
+        historyStatus.hidden = isLive;
         historyStatus.className = 'history-chip';
         historyStatus.classList.toggle('muted', isLive);
         historyStatus.classList.toggle('reviewing', !isLive);
@@ -2095,9 +2002,8 @@ if (!empty($preloadedGame['visitor_color'])) {
 
         notationElements = { fenBox, pgnBox, copyFenBtn, copyPgnBtn, copyFenMsg, copyPgnMsg };
         notationVisible = true;
-        toggleNotationBtn.textContent = 'Hide live-game notation';
+        toggleNotationBtn.textContent = 'Hide FEN / PGN';
         toggleNotationBtn.setAttribute('aria-expanded', 'true');
-        notationStatus.textContent = 'Notation visible';
 
         const clearCopyNotes = () => {
           notationElements.copyFenMsg.textContent = '';
@@ -2143,20 +2049,8 @@ if (!empty($preloadedGame['visitor_color'])) {
         notationMount.innerHTML = '';
         notationElements = null;
         notationVisible = false;
-        toggleNotationBtn.textContent = 'Show live-game notation';
+        toggleNotationBtn.textContent = 'Show FEN / PGN';
         toggleNotationBtn.setAttribute('aria-expanded', 'false');
-        notationStatus.textContent = 'Notation hidden';
-      }
-
-      function setDetailsVisibility(show, { persist = true } = {}) {
-        if (!hudDetailsPanel || !detailsToggle) return;
-        const nextState = Boolean(show);
-        hudDetailsPanel.hidden = !nextState;
-        detailsToggle.setAttribute('aria-expanded', nextState ? 'true' : 'false');
-        detailsOpen = nextState;
-        if (persist) {
-          persistDetailsState(nextState);
-        }
       }
 
       function warnOnLiveFenTurnMismatch(currentState, loadedFen) {
@@ -2181,7 +2075,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         hostColor = canonicalState?.you_color;
         queuedServerState = null;
         selectionIsStale = false;
-        clearErrors();
 
         renderLiveMetadata(canonicalState);
 
@@ -2259,7 +2152,6 @@ if (!empty($preloadedGame['visitor_color'])) {
           ecoLiteStore.load().catch((err) => console.error('ECO dataset preload failed', err));
         }
         renderGameSnapshot();
-        setDetailsVisibility(detailsOpen, { persist: false });
       }
 
       function handleIncomingState(newState, { resetSelection = true, allowQueue = false } = {}) {
@@ -2388,22 +2280,11 @@ if (!empty($preloadedGame['visitor_color'])) {
         fetchState({ resetSelection: true }).catch(handleStateError);
       }
 
-      function showErrors(errors) {
-        if (!errors || !errors.length) {
-          clearErrors();
-          return;
-        }
-        errorBox.textContent = errors.map((line) => `• ${line}`).join('\n');
-        errorBox.classList.add('show');
-      }
-
       renderScoreboard(appConfig.score);
       renderBoard();
       updateHistoryUI();
-      notationStatus.textContent = 'Notation hidden';
 
       fetchState().then(() => {
-        clearErrors();
         startPolling();
       }).catch(handleStateError);
 
@@ -2522,7 +2403,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       });
 
       async function sendVisitorMove(payload) {
-        clearErrors();
         setSubmittingState(true);
         setStatus('Submitting…', 'muted', { showSpinner: true });
         try {
@@ -2558,18 +2438,6 @@ if (!empty($preloadedGame['visitor_color'])) {
             hideNotation();
           } else {
             showNotation();
-          }
-        });
-      }
-
-      if (detailsToggle && hudDetailsPanel) {
-        setDetailsVisibility(detailsOpen, { persist: false });
-        detailsToggle.addEventListener('click', () => {
-          const nextState = hudDetailsPanel.hidden;
-          setDetailsVisibility(nextState);
-          if (nextState) {
-            const behavior = (prefersReducedMotion && prefersReducedMotion.matches) ? 'auto' : 'smooth';
-            hudDetailsPanel.scrollIntoView({ block: 'nearest', behavior });
           }
         });
       }

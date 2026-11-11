@@ -103,7 +103,10 @@ def quality(browser, width, axe_path):
     assert page.locator('#board .sq[tabindex="0"]').evaluate('(e)=>e===document.activeElement')
     tree = accessibility_tree(page)
     assert sum(role == 'button' and bool(re.match(r'^[a-h][1-8], ', name)) for role, name in tree) == 64
-    assert ('button', 'Show live-game notation') not in tree
+    assert ('button', 'Show FEN / PGN') in tree
+    assert page.locator('#detailsToggle, #hudDetailsPanel, .board-help, #notationStatus').count() == 0
+    assert page.locator('#historyStatus').is_hidden()
+    assert page.locator('.status-stack').is_hidden()
     geometry(page)
     results.append(audit(page, 'initial', axe_path))
 
@@ -121,31 +124,34 @@ def quality(browser, width, axe_path):
     page.locator('#btnCancel').click()
     page.locator('#btnBack').click()
     results.append(audit(page, 'history', axe_path))
-    page.locator('#detailsToggle').click()
-    assert ('button', 'Show live-game notation') in accessibility_tree(page)
+    assert ('button', 'Show FEN / PGN') in accessibility_tree(page)
     page.locator('#toggleNotation').click()
     geometry(page)
     results.append(audit(page, 'history with live notation', axe_path))
-    page.locator('#detailsToggle').click()
-    assert ('button', 'Hide live-game notation') not in accessibility_tree(page)
+    assert page.locator('.notation-readout').count() == 2
+    assert ('region', 'Canonical live-game FEN') in accessibility_tree(page)
+    page.locator('#toggleNotation').click()
+    assert ('region', 'Canonical live-game FEN') not in accessibility_tree(page)
 
     page.emulate_media(reduced_motion='reduce')
-    page.evaluate("()=>{Element.prototype.scrollIntoView=function(options){window.lastScrollBehavior=options?.behavior}}")
-    page.locator('#detailsToggle').click()
+    page.evaluate('scrollTo(0,500)')
+    page.wait_for_function("document.querySelector('#backToTopButton').classList.contains('visible')")
+    page.evaluate("()=>{window.originalScrollTo=window.scrollTo; window.scrollTo=function(options){window.lastScrollBehavior=options?.behavior}}")
+    page.locator('#backToTopButton').click()
     assert page.evaluate('window.lastScrollBehavior') == 'auto'
+    page.evaluate('()=>{window.scrollTo=window.originalScrollTo;scrollTo(0,0)}')
     assert page.locator('#statusSpinner').evaluate('(e)=>getComputedStyle(e).animationName') == 'none'
     assert page.locator('#btnSubmit').evaluate('(e)=>parseFloat(getComputedStyle(e).transitionDuration)') <= .001
-    page.locator('#detailsToggle').click()
     page.emulate_media(forced_colors='active')
     assert page.locator('#board .light').first.evaluate('(e)=>getComputedStyle(e).backgroundColor') != page.locator('#board .dark').first.evaluate('(e)=>getComputedStyle(e).backgroundColor')
     geometry(page)
     page.emulate_media(forced_colors='none')
     # Stress inherited text at twice the default size. This is not native browser text zoom.
     page.evaluate("document.documentElement.style.fontSize='200%'")
-    page.locator('#detailsToggle').click()
+    page.locator('#toggleNotation').click()
     geometry(page)
     page.evaluate("document.documentElement.style.fontSize=''")
-    page.locator('#detailsToggle').click()
+    page.locator('#toggleNotation').click()
 
     fen = '4k3/P7/8/8/8/8/8/4K3 w - - 0 1'
     f.state.update(fen=fen, pgn=f'[SetUp "1"]\n[FEN "{fen}"]\n\n*', revision=1,
