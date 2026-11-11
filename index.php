@@ -169,11 +169,10 @@ if (!empty($preloadedGame['visitor_color'])) {
             </button>
           </div>
         </div>
-        <span id="historyStatus" class="history-chip" aria-live="polite"></span>
         <section id="notationMount" class="notation-mount game-details" aria-label="Displayed position details" hidden>
           <dl id="gameSnapshot" class="game-meta">
             <div><dt>Opening</dt><dd id="snapshotOpening">Unknown</dd></div>
-            <div><dt>Position</dt><dd id="snapshotPly">Move 1</dd></div>
+            <div><dt>Ply</dt><dd id="snapshotPly">0 ply · move 1</dd></div>
             <div><dt>Last move</dt><dd id="snapshotLastMove">—</dd></div>
             <div><dt>Status</dt><dd id="snapshotStatus">—</dd></div>
           </dl>
@@ -183,9 +182,6 @@ if (!empty($preloadedGame['visitor_color'])) {
             <span id="copyStatus" class="copy-note" role="status" aria-live="polite"></span>
           </div>
         </section>
-        <div id="historyNotice" class="banner" role="status" aria-live="polite">
-          Reviewing an earlier position. Return to Live to play.
-        </div>
       </div>
       <div class="control-bay">
         <section class="live-game-summary" aria-labelledby="liveGameTitle">
@@ -359,8 +355,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       const btnBack = document.getElementById('btnBack');
       const btnForward = document.getElementById('btnForward');
       const btnLive = document.getElementById('btnLive');
-      const historyStatus = document.getElementById('historyStatus');
-      const historyNotice = document.getElementById('historyNotice');
       const notationMount = document.getElementById('notationMount');
       const toggleNotationBtn = document.getElementById('toggleNotation');
       const snapshotBlock = document.getElementById('gameSnapshot');
@@ -683,7 +677,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         let ready = false;
         const live = isHistoryLiveView();
         if (submitting) reason = 'Submitting your move. Please wait.';
-        else if (!live) reason = 'Reviewing a position. Return to Live before submitting.';
+        else if (!live) reason = 'Return to Live to play.';
         else if (submissions.pending) {
           // Receipt recovery remains available without a fresh CAPTCHA. A new
           // application of the stored move still verifies CAPTCHA on the server.
@@ -1687,8 +1681,11 @@ if (!empty($preloadedGame['visitor_color'])) {
           ? (lastMove.san || `${lastMove.from}${lastMove.to}${lastMove.promotion || ''}`)
           : '';
         const lastMoveLine = isLiveMode() ? buildLastMoveText(state, lastMoveSan) : lastMoveSan;
-        const fullmove = Number(context.chess.fen().split(/\s+/)[5]) || 1;
-        const plyText = `Move ${fullmove}`;
+        const plyCount = context.plyCount;
+        const fullmove = Math.max(1, Math.ceil(plyCount / 2));
+        const plyText = isLiveMode()
+          ? `${plyCount} ply · move ${fullmove}`
+          : `${plyCount} of ${context.totalPlies} ply · move ${fullmove}`;
         if (snapshotPlyEl && snapshotRenderCache.ply !== plyText) {
           snapshotRenderCache.ply = plyText;
           snapshotPlyEl.textContent = plyText;
@@ -1784,10 +1781,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         return best;
       }
 
-      function resetHistoryNotice() {
-        historyNotice?.classList.remove('show');
-      }
-
       function syncHistoryFromState(currentState) {
         const initialFen = 'start';
         const movesPgn = (currentState && typeof currentState.pgn === 'string')
@@ -1829,12 +1822,10 @@ if (!empty($preloadedGame['visitor_color'])) {
           };
         } catch (err) {
           const message = err && err.message ? err.message : String(err);
-          historyStatus.textContent = `History unavailable: ${message}`;
-          historyStatus.className = 'history-chip error';
+          setStatus(`History unavailable: ${message}`, 'error');
           console.error('History reconstruction failed', err);
           historyState = null;
           updateViewState({ mode: 'live', selectedPly: 0, latestPly: 0 });
-          resetHistoryNotice();
           return {
             fen: fallbackFen,
             normalizedPgn: fallbackPgn,
@@ -1849,13 +1840,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           if (btnBack) btnBack.disabled = true;
           if (btnForward) btnForward.disabled = true;
           if (btnLive) btnLive.disabled = true;
-          resetHistoryNotice();
           boardEl.classList.remove('history-locked');
-          if (historyStatus) {
-            historyStatus.textContent = 'Live';
-            historyStatus.hidden = true;
-            historyStatus.className = 'history-chip muted';
-          }
           return;
         }
         const selectedIdx = getSelectedHistoryIndex();
@@ -1865,17 +1850,6 @@ if (!empty($preloadedGame['visitor_color'])) {
         if (btnBack) btnBack.disabled = submitting || selectedIdx <= 0;
         if (btnForward) btnForward.disabled = submitting || selectedIdx >= h.timeline.length - 1;
         if (btnLive) btnLive.disabled = submitting || isLive;
-        const statusText = h.timeline.length > 1
-          ? (isLive ? 'Live' : `Reviewing ply ${selectedIdx} of ${h.timeline.length - 1}`)
-          : 'Live';
-        historyStatus.textContent = statusText;
-        historyStatus.hidden = isLive;
-        historyStatus.className = 'history-chip';
-        historyStatus.classList.toggle('muted', isLive);
-        historyStatus.classList.toggle('reviewing', !isLive);
-        if (historyNotice) {
-          historyNotice.classList.toggle('show', !isLive);
-        }
         boardEl.classList.toggle('history-locked', Boolean(h && !isLive));
         syncSubmissionControls();
       }
@@ -1906,8 +1880,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         try {
           if (!game.load(targetFen)) throw new Error('Invalid history FEN');
         } catch (err) {
-          historyStatus.textContent = `History unavailable: ${err && err.message ? err.message : err}`;
-          historyStatus.className = 'history-chip error';
+          setStatus(`History unavailable: ${err && err.message ? err.message : err}`, 'error');
           console.error('History load failed', err);
           historyState = null;
           boardEl.classList.remove('history-locked');

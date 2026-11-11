@@ -28,7 +28,7 @@ The toggle uses `#ff6b6b` off and `#6cd69b` on, a `#0f141d` knob, `#202631` inne
 
 The reference CSS and markup are scoped to `.public-game`; existing host styles remain independent. Controls share one row: Start, Back, Forward, Live, Flip, and the copied notation toggle. `Live` retains the asynchronous game's existing meaning rather than becoming the reference's `Final` action.
 
-The toggle opens displayed-position metadata directly below the history controls: opening, move number, last move, and status. Copy FEN and Copy PGN sit below those facts; no raw notation is rendered. Exports follow the selected history ply, Live, or a legal unsubmitted preview. The standalone PGN import service has been removed. Pressed/expanded state stays synchronized and the icon remains mounted.
+The toggle opens displayed-position metadata directly below the history controls: opening, selected/total ply with move number, last move, and status. Copy FEN and Copy PGN sit below those facts; no raw notation is rendered. Exports follow the selected history ply, Live, or a legal unsubmitted preview. The standalone PGN import service has been removed. Pressed/expanded state stays synchronized and the icon remains mounted.
 
 Button widths respond to the available board width. At widths up to 360px, content-based flex sizing prevents the Forward label from overflowing; toggle dimensions and styling remain unchanged. Keyboard labels, focus handling, and the wider board are preserved.
 

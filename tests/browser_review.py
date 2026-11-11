@@ -37,7 +37,13 @@ def square(page, logical, color):
 
 
 def wait_history(page, text):
-    page.wait_for_function('(text) => document.querySelector("#historyStatus").textContent === text', arg=text)
+    import re
+    match = re.fullmatch(r'Reviewing ply (\d+) of (\d+)', text)
+    if match:
+        expected = f'{match[1]} of {match[2]} ply · move '
+        page.wait_for_function('(text)=>document.querySelector("#snapshotPly").textContent.startsWith(text)', arg=expected)
+    else:
+        page.wait_for_function('()=>!document.querySelector("#snapshotPly").textContent.includes(" of ")')
 
 
 def main():
