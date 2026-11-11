@@ -2302,3 +2302,11 @@ textarea {
     animation: none;
   }
 }
+
+/* Displayed-position details; raw notation is available only through copying. */
+.public-game .game-details { padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.public-game .game-meta { margin: 0 0 16px; }
+.public-game .game-meta > div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.public-game .game-meta dt { color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+.public-game .game-meta dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-weight: 600; }
+.public-game .game-details .notation-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }

@@ -159,21 +159,32 @@ if (!empty($preloadedGame['visitor_color'])) {
 </svg>
               </button>
             </div>
-            <button id="toggleNotation" class="pgn-annot-toggle" type="button" aria-label="Toggle live-game notation" title="Live-game FEN / PGN" aria-pressed="false" aria-expanded="false" aria-controls="notationMount" data-enabled="0">
+            <button id="toggleNotation" class="pgn-annot-toggle" type="button" aria-label="Toggle game details" title="Game details and copy position" aria-pressed="false" aria-expanded="false" aria-controls="notationMount" data-enabled="0">
               <span class="pgn-annot-toggle__knob" aria-hidden="true">
                 <span class="pgn-annot-toggle__disc" aria-hidden="true">
                   <img class="pgn-annot-toggle__icon" src="assets/icons/annot-pill.svg" alt="" aria-hidden="true">
                 </span>
               </span>
-              <span class="visually-hidden">Toggle live-game notation</span>
+              <span class="visually-hidden">Toggle game details</span>
             </button>
           </div>
         </div>
         <span id="historyStatus" class="history-chip" aria-live="polite"></span>
-        <div id="notationMount" class="notation-mount" hidden></div>
+        <section id="notationMount" class="notation-mount game-details" aria-label="Displayed position details" hidden>
+          <dl id="gameSnapshot" class="game-meta">
+            <div><dt>Opening</dt><dd id="snapshotOpening">Unknown</dd></div>
+            <div><dt>Position</dt><dd id="snapshotPly">Move 1</dd></div>
+            <div><dt>Last move</dt><dd id="snapshotLastMove">—</dd></div>
+            <div><dt>Status</dt><dd id="snapshotStatus">—</dd></div>
+          </dl>
+          <div class="notation-actions">
+            <button id="copyFen" type="button" class="secondary ghost-button button-compact">Copy FEN</button>
+            <button id="copyPgn" type="button" class="secondary ghost-button button-compact">Copy PGN</button>
+            <span id="copyStatus" class="copy-note" role="status" aria-live="polite"></span>
+          </div>
+        </section>
         <div id="historyNotice" class="banner" role="status" aria-live="polite">
-          <span id="snapshotStatus">Review position</span>
-          <span class="review-last-move">Last move: <span id="snapshotLastMove">—</span></span>
+          Reviewing an earlier position. Return to Live to play.
         </div>
       </div>
       <div class="control-bay">
@@ -246,15 +257,7 @@ if (!empty($preloadedGame['visitor_color'])) {
           </div>
           <p class="score-last muted" id="scoreLastResult" aria-live="polite"></p>
         </section>
-        <section class="position-info" aria-label="Displayed position">
-          <div id="gameSnapshot" class="position-facts">
-            <span><span class="muted">Opening: </span><span id="snapshotOpening">Unknown</span></span>
-            <span id="snapshotPly" class="muted">Move 1</span>
-          </div>
-          <div class="notation-controls">
-            <a href="review.php">Import PGN</a>
-          </div>
-        </section>
+
       </div>
     </div>
 
@@ -406,8 +409,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       let promotionColor = null;
       let gameOverState = { over: false, reason: null, winner: null };
       let notationVisible = false;
-      let notationElements = null;
-      let notationData = { fen: '', pgn: '' };
       let historyState = null;
       let viewState = { mode: 'live', selectedPly: 0, latestPly: 0 };
       let turnstileToken = null;
@@ -1942,136 +1943,64 @@ if (!empty($preloadedGame['visitor_color'])) {
         renderHistoryPosition({ forceRender });
       }
 
-      function setNotationData({ fen = '', pgn = '' }) {
-        notationData = { fen: fen || '', pgn: pgn || '' };
-        if (notationVisible && notationElements) {
-          notationElements.fenBox.textContent = notationData.fen;
-          notationElements.pgnBox.textContent = notationData.pgn;
-          notationElements.copyFenMsg.textContent = '';
-          notationElements.copyPgnMsg.textContent = '';
-        }
-      }
-
       function showNotation() {
-        if (!notationMount || notationVisible) return;
-        const wrapper = document.createElement('div');
-        wrapper.className = 'notation-grid';
-        const fenBlock = document.createElement('div');
-        fenBlock.className = 'notation-block';
-        const fenHeader = document.createElement('div');
-        fenHeader.className = 'notation-header';
-        const fenLabel = document.createElement('p');
-        fenLabel.className = 'notation-label muted';
-        fenLabel.textContent = 'Live-game FEN';
-        const fenActions = document.createElement('div');
-        fenActions.className = 'notation-actions';
-        const copyFenBtn = document.createElement('button');
-        copyFenBtn.type = 'button';
-        copyFenBtn.className = 'secondary ghost-button button-compact';
-        copyFenBtn.textContent = 'Copy FEN';
-        const copyFenMsg = document.createElement('span');
-        copyFenMsg.className = 'copy-note';
-        copyFenMsg.setAttribute('aria-live', 'polite');
-        fenActions.appendChild(copyFenBtn);
-        fenActions.appendChild(copyFenMsg);
-        fenHeader.appendChild(fenLabel);
-        fenHeader.appendChild(fenActions);
-        const fenBox = document.createElement('pre');
-        fenBox.className = 'notation-readout notation-readout--fen';
-        fenBox.setAttribute('tabindex', '0');
-        fenBox.setAttribute('role', 'region');
-        fenBox.setAttribute('aria-label', 'Canonical live-game FEN');
-        fenBlock.appendChild(fenHeader);
-        fenBlock.appendChild(fenBox);
-
-        const pgnBlock = document.createElement('div');
-        pgnBlock.className = 'notation-block';
-        const pgnHeader = document.createElement('div');
-        pgnHeader.className = 'notation-header';
-        const pgnLabel = document.createElement('p');
-        pgnLabel.className = 'notation-label muted';
-        pgnLabel.textContent = 'Live-game PGN';
-        const pgnActions = document.createElement('div');
-        pgnActions.className = 'notation-actions';
-        const copyPgnBtn = document.createElement('button');
-        copyPgnBtn.type = 'button';
-        copyPgnBtn.className = 'secondary ghost-button button-compact';
-        copyPgnBtn.textContent = 'Copy PGN';
-        const copyPgnMsg = document.createElement('span');
-        copyPgnMsg.className = 'copy-note';
-        copyPgnMsg.setAttribute('aria-live', 'polite');
-        pgnActions.appendChild(copyPgnBtn);
-        pgnActions.appendChild(copyPgnMsg);
-        pgnHeader.appendChild(pgnLabel);
-        pgnHeader.appendChild(pgnActions);
-        const pgnBox = document.createElement('pre');
-        pgnBox.className = 'notation-readout notation-readout--pgn';
-        pgnBox.setAttribute('tabindex', '0');
-        pgnBox.setAttribute('role', 'region');
-        pgnBox.setAttribute('aria-label', 'Canonical live-game PGN');
-        pgnBlock.appendChild(pgnHeader);
-        pgnBlock.appendChild(pgnBox);
-
-        wrapper.appendChild(fenBlock);
-        wrapper.appendChild(pgnBlock);
-        notationMount.appendChild(wrapper);
-
-        notationElements = { fenBox, pgnBox, copyFenBtn, copyPgnBtn, copyFenMsg, copyPgnMsg };
         notationVisible = true;
         notationMount.hidden = false;
         toggleNotationBtn.setAttribute('aria-pressed', 'true');
         toggleNotationBtn.dataset.enabled = '1';
         toggleNotationBtn.setAttribute('aria-expanded', 'true');
-
-        const clearCopyNotes = () => {
-          notationElements.copyFenMsg.textContent = '';
-          notationElements.copyPgnMsg.textContent = '';
-        };
-
-        const copyText = async (value, targetMsgEl) => {
-          clearCopyNotes();
-          const text = value || '';
-          try {
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-              await navigator.clipboard.writeText(text);
-            } else {
-              const temp = document.createElement('textarea');
-              const previousFocus = document.activeElement;
-              temp.value = text;
-              temp.style.position = 'fixed';
-              temp.style.opacity = '0';
-              document.body.appendChild(temp);
-              temp.select();
-              let copied;
-              try {
-                copied = document.execCommand('copy');
-              } finally {
-                temp.remove();
-                if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
-              }
-              if (!copied) throw new Error('Clipboard unavailable');
-            }
-            targetMsgEl.textContent = 'Copied';
-          } catch (err) {
-            targetMsgEl.textContent = 'Copy failed';
-          }
-        };
-
-        copyFenBtn.addEventListener('click', () => copyText(fenBox.textContent, copyFenMsg));
-        copyPgnBtn.addEventListener('click', () => copyText(pgnBox.textContent, copyPgnMsg));
-        setNotationData(notationData);
+        renderGameSnapshot();
       }
 
       function hideNotation() {
-        if (!notationVisible || !notationMount) return;
-        notationMount.innerHTML = '';
-        notationElements = null;
         notationVisible = false;
         notationMount.hidden = true;
+        document.getElementById('copyStatus').textContent = '';
         toggleNotationBtn.setAttribute('aria-pressed', 'false');
         toggleNotationBtn.dataset.enabled = '0';
         toggleNotationBtn.setAttribute('aria-expanded', 'false');
       }
+
+      // Read at click time: exports follow the displayed ply, including a legal
+      // unsubmitted preview, rather than a cached canonical server position.
+      function displayedExport() {
+        const replay = buildSnapshotContext().chess;
+        if (isLiveMode() && pendingMove?.san && replay.fen() !== game.fen()) {
+          replay.move(pendingMove.san, { sloppy: true });
+        }
+        if (replay.fen() !== game.fen()) throw new Error('Position history unavailable');
+        return { fen: game.fen(), pgn: replay.pgn() };
+      }
+
+      async function copyDisplayedPosition(kind) {
+        const message = document.getElementById('copyStatus');
+        message.textContent = '';
+        try {
+          const text = kind === 'fen' ? game.fen() : displayedExport().pgn;
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const temp = document.createElement('textarea');
+            const previousFocus = document.activeElement;
+            temp.value = text;
+            temp.style.cssText = 'position:fixed;opacity:0';
+            document.body.appendChild(temp);
+            temp.select();
+            let copied;
+            try { copied = document.execCommand('copy'); }
+            finally {
+              temp.remove();
+              if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+            }
+            if (!copied) throw new Error('Clipboard unavailable');
+          }
+          message.textContent = `${kind.toUpperCase()} copied`;
+        } catch (err) {
+          message.textContent = 'Copy failed. Please try again.';
+        }
+      }
+      document.getElementById('copyFen').addEventListener('click', () => copyDisplayedPosition('fen'));
+      document.getElementById('copyPgn').addEventListener('click', () => copyDisplayedPosition('pgn'));
 
       function warnOnLiveFenTurnMismatch(currentState, loadedFen) {
         if (!currentState || !loadedFen || !currentState.turn_color) return;
@@ -2101,10 +2030,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         visitorColorLabel.textContent = visitorColor;
         hostColorLabel.textContent = hostColor;
 
-        const historyResult = syncHistoryFromState(canonicalState) || {};
-        const normalizedPgnForDisplay = historyResult.normalizedPgn
-          || deriveDisplayPgn(canonicalState.pgn, parseSansFromPgn(canonicalState.pgn));
-        setNotationData({ fen: canonicalState.fen, pgn: normalizedPgnForDisplay });
+        syncHistoryFromState(canonicalState);
 
         const selectedIdx = getSelectedHistoryIndex();
         const historyFenForSelection = historyState && Array.isArray(historyState.timeline)
