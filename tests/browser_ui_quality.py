@@ -108,7 +108,7 @@ def quality(browser, width, axe_path):
     assert sum(role == 'button' and bool(re.match(r'^[a-h][1-8], ', name)) for role, name in tree) == 64
     assert ('button', 'Toggle game details') in tree
     assert page.locator('#detailsToggle, #hudDetailsPanel, .board-help, #notationStatus').count() == 0
-    assert page.locator('#historyStatus').is_hidden()
+    assert page.locator('#historyStatus, #historyNotice').count() == 0
     assert page.locator('.status-stack').is_hidden()
     geometry(page)
     results.append(audit(page, 'initial', axe_path))

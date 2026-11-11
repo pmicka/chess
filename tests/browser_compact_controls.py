@@ -59,9 +59,12 @@ def main():
             page.keyboard.press('Space')
             assert toggle.get_attribute('aria-pressed') == toggle.get_attribute('aria-expanded') == 'false'
             assert page.locator('#notationMount').is_hidden()
+            assert page.locator('#snapshotPly').is_hidden()
             page.locator('#btnBack').click()
             toggle.click()
             assert page.locator('#btnSubmit').is_disabled()
+            assert page.locator('#historyStatus, #historyNotice').count() == 0
+            assert page.locator('#snapshotPly').inner_text() == '3 of 4 ply · move 2'
             page.locator('#copyPgn').click()
             assert page.evaluate('window.copied.at(-1)') == '1. e4 e5 2. Nf3'
             page.locator('#copyFen').click()

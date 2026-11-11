@@ -147,7 +147,7 @@ def main():
                 assert page.locator('#btnSubmit').is_disabled()
                 assert page.locator('#btnCancel').is_hidden()
                 assert page.locator('#detailsToggle, #hudDetailsPanel, .board-help, #notationStatus').count() == 0
-                assert page.locator('#historyStatus').is_hidden()
+                assert page.locator('#historyStatus, #historyNotice').count() == 0
                 assert page.locator('.status-stack').is_hidden()
                 assert page.locator('#submissionHelp').is_visible()
                 assert page.locator('#boardHelp').evaluate('(e)=>getComputedStyle(e).clipPath') == 'inset(50%)'
@@ -195,7 +195,8 @@ def main():
                 assert page.locator('#btnSubmit').is_disabled()
                 assert len(f.receipts) == 1
                 page.locator('#btnBack').click()
-                assert 'Reviewing ply' in page.locator('#historyStatus').inner_text()
+                assert ' of ' in page.locator('#snapshotPly').inner_text()
+                assert page.locator('#snapshotPly').is_hidden()
                 assert page.locator('#btnSubmit').is_disabled()
                 f.verify()
                 assert page.locator('#btnSubmit').is_disabled(), 'verification unlocked history'
@@ -209,7 +210,7 @@ def main():
                 assert page.locator('textarea').count() == 0, 'clipboard fallback leaked a focus target'
                 assert page.get_by_role('button', name='Copy FEN', exact=True).evaluate('(e)=>e===document.activeElement')
                 page.locator('#btnLive').click()
-                assert page.locator('#historyNotice').is_hidden()
+                assert page.locator('#historyNotice').count() == 0
                 f.close()
                 print('PASS keyboard, verification, cancellation, submit, history, notation', width, color)
 
@@ -289,7 +290,7 @@ def main():
         f.page.locator('#btnSubmit').dispatch_event('click')
         f.page.locator('#btnBack').dispatch_event('click')
         assert len(f.posts) == 1
-        assert f.page.locator('#historyStatus').inner_text() == 'Live'
+        assert ' of ' not in f.page.locator('#snapshotPly').inner_text()
         assert f.page.locator('#btnCancel').is_disabled()
         f.held[0].abort()
         wait_text(f.page, '#statusMsg', 'unconfirmed')

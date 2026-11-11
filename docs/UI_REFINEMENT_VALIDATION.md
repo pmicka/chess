@@ -117,3 +117,9 @@ No production deployment or commit was made during validation.
 - Focused checks passed at 320/390/768/1280px for sizing, keyboard disclosure, live/history/start/preview exports, Live return, cancellation, clipboard failure, and history submission locking. Full interaction checks passed for both sides, promotion, stale/invalid state, submission concurrency, verification gating, and game-over messaging.
 - All 32 axe state/viewport scans passed without automatic violations. Shared-style, reduced-motion, forced-color, text-stress, landscape, and bounded-polling checks passed. Visually reviewed the expanded mobile panel. JavaScript syntax and diff checks passed; existing PHP blocks are unchanged.
 - Physical-device, real CAPTCHA, manual contrast, and PHP/staging checks remain outstanding. No merge or production deployment performed.
+
+## Consolidated ply information — November 11, 2026
+
+- Removed the history info pill and earlier-position banner. Selected/total ply and move number now share the details panel's Ply row, hidden with the slider closed. Move numbering follows the reference viewer's completed/selected move convention (`ceil(ply / 2)`, minimum 1). The disabled submission hint is shortened to “Return to Live to play.”
+- History failures use the existing accessible error feedback; history submission locking, navigation, and copy exports are retained.
+- Focused controls/exports, full interaction checks, all 32 axe scans, shared styles, reduced motion, forced colors, reflow, landscape, and bounded polling passed. A targeted check confirmed both live and reviewed ply text and closed-panel visibility after the numbering adjustment. Mobile screenshot visually reviewed. Physical-device/PHP/staging/manual checks remain outstanding. Not merged or deployed.
