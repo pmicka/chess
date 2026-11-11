@@ -261,15 +261,6 @@ if (!empty($preloadedGame['visitor_color'])) {
       </footer>
     </div>
 
-    <dialog id="cancelMoveDialog" class="cancel-move-dialog" aria-labelledby="cancelMoveTitle" aria-describedby="cancelMoveDescription">
-      <h2 id="cancelMoveTitle">Cancel move?</h2>
-      <p id="cancelMoveDescription">Your selected move has not been submitted.</p>
-      <div class="cancel-move-actions">
-        <button id="keepSelectedMove" type="button" autofocus>Keep move</button>
-        <button id="discardSelectedMove" type="button" class="secondary">Cancel move</button>
-      </div>
-    </dialog>
-
     <section id="about" class="about-section" aria-labelledby="about-heading">
       <h2 id="about-heading">About this project</h2>
       <p class="about-lede">This is a small experiment in building things by doing them.</p>
@@ -766,40 +757,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         btnCancel.disabled = !(pendingMove || selectedSquare) || submitting || Boolean(submissions.pending);
         boardEl.setAttribute('aria-busy', String(submitting || refreshingState));
         syncMoveGuidance(ready, reason);
-        if (cancelMoveDialog.open && (!pendingMove || submitting || submissions.pending)) keepSelectedMove();
       }
-
-      const cancelMoveDialog = document.getElementById('cancelMoveDialog');
-      let discardAction = null;
-      function protectSelectedMove(action) {
-        if (!pendingMove || submitting || submissions.pending || promotionPending) return false;
-        if (!cancelMoveDialog.open) {
-          discardAction = action;
-          cancelMoveDialog.showModal();
-          document.getElementById('keepSelectedMove').focus();
-        }
-        return true;
-      }
-      function keepSelectedMove() {
-        discardAction = null;
-        cancelMoveDialog.close();
-      }
-      document.getElementById('keepSelectedMove').addEventListener('click', keepSelectedMove);
-      document.getElementById('discardSelectedMove').addEventListener('click', () => {
-        const action = discardAction;
-        discardAction = null;
-        cancelMoveDialog.close();
-        cancelSelectedMove();
-        action?.();
-      });
-      cancelMoveDialog.addEventListener('cancel', event => {
-        event.preventDefault();
-        keepSelectedMove();
-      });
-      cancelMoveDialog.addEventListener('keydown', event => {
-        event.stopPropagation();
-        if (event.key === 'Escape') { event.preventDefault(); keepSelectedMove(); }
-      });
 
       function cancelSelectedMove() {
         if (submitting || submissions.pending) return;
@@ -1179,8 +1137,7 @@ if (!empty($preloadedGame['visitor_color'])) {
         if (selectionIsStale || queuedServerState) { syncSubmissionControls(); return; }
 
         if (pendingMove && !selectedSquare) {
-          protectSelectedMove(() => onSquareClick(opaqueSquareId));
-          return;
+          clearSelection({ restore: true });
         }
 
         if (!isVisitorsTurn()) {
@@ -1994,7 +1951,6 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       function applyHistoryPosition(targetIdx, { forceRender = false, mode = null, allowAutoLive = false } = {}) {
         if (submitting) return;
-        if (protectSelectedMove(() => applyHistoryPosition(targetIdx, { forceRender, mode, allowAutoLive }))) return;
         const h = historyState;
         if (!h || !Array.isArray(h.timeline) || !h.timeline.length) {
           return;
@@ -2284,7 +2240,6 @@ if (!empty($preloadedGame['visitor_color'])) {
 
       function applyQueuedStateOrFetch({ forceLive = false } = {}) {
         if (submitting) return;
-        if (protectSelectedMove(() => applyQueuedStateOrFetch({ forceLive }))) return;
         if (forceLive) {
           updateViewState({ mode: 'live' });
         }

@@ -109,5 +109,3 @@ Asynchronous chess experiment where the host plays the world on a single board. 
 - Use feature branches and pull requests as usual; there is no enforced branching convention in-repo.
 
 - Move-guidance checks: `python3 tests/browser_move_guidance.py` exercises isolated reminder timing, CAPTCHA gating, cancellation/submission cleanup, review guidance, and reduced motion.
-
-- Move-confirmation checks: `python3 tests/browser_move_confirmation.py` verifies protected board/refresh/history actions, keyboard behavior, preservation, confirmed cancellation, and submission. Pass `--axe-path /path/to/axe.min.js` for modal accessibility scans.
