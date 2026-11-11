@@ -28,10 +28,16 @@ The toggle uses `#ff6b6b` off and `#6cd69b` on, a `#0f141d` knob, `#202631` inne
 
 The reference CSS and markup are scoped to `.public-game`; existing host styles remain independent. Controls share one row: Start, Back, Forward, Live, Flip, and the copied notation toggle. `Live` retains the asynchronous game's existing meaning rather than becoming the reference's `Final` action.
 
-The toggle opens displayed-position metadata directly below the history controls: opening, selected/total ply with move number, last move, and status. Copy FEN and Copy PGN sit below those facts; no raw notation is rendered. Exports follow the selected history ply, Live, or a legal unsubmitted preview. The standalone PGN import service has been removed. Pressed/expanded state stays synchronized and the icon remains mounted.
+The toggle opens displayed-position metadata below the live summary and move controls, before the all-time score: opening, selected/total ply with move number, last move, and status. Copy FEN and Copy PGN sit below those facts; no raw notation is rendered. Exports follow the selected history ply, Live, or a legal unsubmitted preview. The standalone PGN import service has been removed. Pressed/expanded state stays synchronized and the icon remains mounted.
 
 Button widths respond to the available board width. At widths up to 360px, content-based flex sizing prevents the Forward label from overflowing; toggle dimensions and styling remain unchanged. Keyboard labels, focus handling, and the wider board are preserved.
 
 Reference screenshots were inspected at 390/1280px. `tests/browser_compact_controls.py` verifies extracted dimensions, the exact icon, on/off geometry and colors, keyboard operation, displayed FEN/PGN export during history review, Live return, unsubmitted previews, clipboard errors, and submission locking at 320/390/768/1280px. Native-device and real Turnstile/PHP integration checks remain separate.
 
 The copied SVG is 226,352 bytes uncompressed; its embedded artwork is preserved for the requested visual match. It is a static local asset, not a new runtime library.
+
+## Game typography and content order
+
+Public game facts and feedback share 14px regular text with 1.5 line height. Labels use 12px regular sentence case; section headings use 15px semibold; score totals use 22px semibold. Buttons retain the reference control sizing.
+
+On mobile, order is board/navigation, live summary, move controls and asynchronous feedback, optional position details/copy controls, then all-time score. Desktop keeps the board/navigation on the left and the same information order in the right column. Opening details never displaces the live action area. Details show the last move without its timestamp; the timestamp remains in the live summary.

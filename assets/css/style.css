@@ -2310,3 +2310,34 @@ textarea {
 .public-game .game-meta dt { color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
 .public-game .game-meta dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-weight: 600; }
 .public-game .game-details .notation-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+/* One type scale for game facts, feedback, and optional review details. */
+.public-game {
+  --game-text-size: 14px;
+  --game-label-size: 12px;
+  --game-heading-size: 15px;
+}
+.public-game .control-bay { font-size: var(--game-text-size); line-height: 1.5; }
+.public-game .live-game-heading h2,
+.public-game .live-score-heading {
+  font-size: var(--game-heading-size); line-height: 1.4; font-weight: 600;
+  color: var(--text-primary);
+}
+.public-game .live-game-heading > span,
+.public-game .live-game-facts dd,
+.public-game .game-meta dd,
+.public-game .submission-help,
+.public-game .status-line,
+.public-game .score-last,
+.public-game .connection-notice {
+  font-size: var(--game-text-size); line-height: 1.5; font-weight: 400;
+}
+.public-game .live-game-facts dt,
+.public-game .game-meta dt,
+.public-game .score-label {
+  font-size: var(--game-label-size); line-height: 1.5; font-weight: 400;
+  text-transform: none; letter-spacing: normal; color: var(--text-muted);
+}
+.public-game .game-meta dd { color: var(--text-primary); }
+.public-game .score-value { font-size: 22px; line-height: 1.2; font-weight: 600; }
+.public-game .game-details { margin: 0; min-width: 0; }
